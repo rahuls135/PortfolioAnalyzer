@@ -1,12 +1,14 @@
-from http.client import HTTPException
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import os
-from database import engine, Base
-import models  # Import your models
-from typing import List
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
 from datetime import datetime, timezone
+from typing import List
+import os
 import requests
+
+from database import get_db, engine, Base
+import models
 
 app = FastAPI()
 
