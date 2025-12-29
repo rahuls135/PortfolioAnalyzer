@@ -35,6 +35,23 @@ def setup_database():
     return {"message": "Database tables created successfully"}
 
 # Pydantic models
+class UserCreate(BaseModel):
+    age: int
+    income: float
+    risk_tolerance: str
+    retirement_years: int
+
+class UserResponse(BaseModel):
+    id: int
+    age: int
+    income: float
+    risk_tolerance: str
+    retirement_years: int
+    ai_analysis: str = None
+    
+    class Config:
+        from_attributes = True
+
 class HoldingCreate(BaseModel):
     ticker: str
     shares: float
