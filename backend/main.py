@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
+from database import engine, Base
+import models  # Import your models
 
 app = FastAPI()
 
@@ -21,4 +23,7 @@ def read_root():
 def health_check():
     return {"status": "healthy"}
 
-# Your other routes will go here
+@app.post("/setup-db")
+def setup_database():
+    Base.metadata.create_all(bind=engine)
+    return {"message": "Database tables created successfully"}

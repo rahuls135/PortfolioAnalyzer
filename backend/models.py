@@ -1,0 +1,64 @@
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON
+from sqlalchemy.orm import relationship
+from datetime import datetime, timezone
+from database import Base
+
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    age = Column(Integer)
+    income = Column(Float)
+    risk_tolerance = Column(String)  # "conservative", "moderate", "aggressive"
+    retirement_years = Column(Integer)  # years until retirement
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    # Relationship to portfolio
+    holdings = relationship("Holding", back_populates="user")
+    profile = relationship("UserProfile", back_populates="user", uselist=False)
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    recommended_equity_pct = Column(Float)
+    recommended_allocation = Column(JSON)  # Store sector recommendations
+    ai_analysis = Column(String)  # LLM-generated profile analysis
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    user = relationship("User", back_populates="profile")
+
+class Holding(Base):
+    __tablename__ = "holdings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    ticker = Column(String, index=True)
+    shares = Column(Float)
+    purchase_price = Column(Float)
+    purchase_date = Column(DateTime)
+    
+    user = relationship("User", back_populates="holdings")
+
+class StockData(Base):
+    __tablename__ = "stock_data"
+    
+    ticker = Column(String, primary_key=True, index=True)
+    current_price = Column(Float)
+    pe_ratio = Column(Float, nullable=True)
+    sector = Column(String, nullable=True)
+    market_cap = Column(Float, nullable=True)
+    last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class NewsItem(Base):
+    __tablename__ = "news_items"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True)
+    headline = Column(String)
+    url = Column(String)
+    published_date = Column(DateTime)
+    ai_summary = Column(String)
+    sentiment = Column(String)  # "positive", "negative", "neutral"
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
