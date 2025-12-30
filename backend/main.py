@@ -57,15 +57,13 @@ class UserResponse(BaseModel):
 class HoldingCreate(BaseModel):
     ticker: str
     shares: float
-    purchase_price: float
-    purchase_date: datetime
+    avg_price: float
 
 class HoldingResponse(BaseModel):
     id: int
     ticker: str
     shares: float
-    purchase_price: float
-    purchase_date: datetime
+    avg_price: float
     
     class Config:
         from_attributes = True
@@ -82,8 +80,7 @@ def add_holding(user_id: int, holding: HoldingCreate, db: Session = Depends(get_
         user_id=user_id,
         ticker=holding.ticker.upper(),
         shares=holding.shares,
-        purchase_price=holding.purchase_price,
-        purchase_date=holding.purchase_date
+        avg_price=holding.avgPrice
     )
     db.add(db_holding)
     db.commit()
@@ -246,14 +243,14 @@ def analyze_portfolio(user_id: int, db: Session = Depends(get_db)):
                 continue
         
         current_value = holding.shares * stock.current_price
-        cost_basis = holding.shares * holding.purchase_price
+        cost_basis = holding.shares * holding.avg_price
         gain_loss = current_value - cost_basis
         gain_loss_pct = (gain_loss / cost_basis) * 100 if cost_basis > 0 else 0
         
         portfolio_summary.append({
             "ticker": holding.ticker,
             "shares": holding.shares,
-            "purchase_price": holding.purchase_price,
+            "avg_price": holding.avg_price,
             "current_price": stock.current_price,
             "current_value": current_value,
             "gain_loss": gain_loss,
@@ -325,7 +322,7 @@ def get_user_by_supabase_id(supabase_user_id: str, db: Session = Depends(get_db)
 
 class HoldingUpdate(BaseModel):
     shares: float = None
-    avg_price: float = None  # use purchase_price if you haven't renamed yet
+    avg_price: float = None 
 
 @app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
 def update_holding(holding_id: int, update: HoldingUpdate = Body(...), db: Session = Depends(get_db)):
@@ -338,7 +335,7 @@ def update_holding(holding_id: int, update: HoldingUpdate = Body(...), db: Sessi
     if update.shares is not None:
         holding.shares = update.shares
     if update.avg_price is not None:
-        holding.avg_price = update.avg_price  # or holding.purchase_price if you haven't renamed
+        holding.avg_price = update.avg_price
     
     db.commit()
     db.refresh(holding)
