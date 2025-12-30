@@ -1,6 +1,23 @@
 import axios from 'axios';
+import { supabase } from './supabase';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+export const apiClient = axios.create({
+  baseURL: API_URL,
+});
+
+apiClient.interceptors.request.use(async (config) => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`;
+  }
+
+  return config;
+});
 
 // Define types for your data
 export interface User {
@@ -58,29 +75,29 @@ export interface PortfolioAnalysis {
 
 export const api = {
   createUser: (userData: UserCreate) => 
-    axios.post<User>(`${API_URL}/api/users`, userData),
+    apiClient.post<User>(`${API_URL}/api/users`, userData),
   
   getUser: (userId: number) => 
-    axios.get<User>(`${API_URL}/api/users/${userId}`),
+    apiClient.get<User>(`${API_URL}/api/users/${userId}`),
   
   getUserBySupabaseId: (supabaseUserId: string) =>
-    axios.get<User>(`${API_URL}/api/users/supabase/${supabaseUserId}`),
+    apiClient.get<User>(`${API_URL}/api/users/supabase/${supabaseUserId}`),
   
-  addHolding: (userId: number, holdingData: HoldingCreate) => 
-    axios.post<Holding>(`${API_URL}/api/users/${userId}/holdings`, holdingData),
+  addHolding: (holdingData: HoldingCreate) => 
+    apiClient.post<Holding>(`${API_URL}/api/holdings`, holdingData),
   
   updateHolding: (userId: number, holdingId: number, holdingData: Partial<HoldingCreate>) =>
-    axios.patch<Holding>(`${API_URL}/api/users/${userId}/holdings/${holdingId}`, holdingData),
+    apiClient.patch<Holding>(`${API_URL}/api/users/${userId}/holdings/${holdingId}`, holdingData),
   
   getHoldings: (userId: number) => 
-    axios.get<Holding[]>(`${API_URL}/api/users/${userId}/holdings`),
+    apiClient.get<Holding[]>(`${API_URL}/api/users/${userId}/holdings`),
   
   deleteHolding: (userId: number, holdingId: number) => 
-    axios.delete(`${API_URL}/api/users/${userId}/holdings/${holdingId}`),
+    apiClient.delete(`${API_URL}/api/users/${userId}/holdings/${holdingId}`),
   
   analyzePortfolio: (userId: number) => 
-    axios.get<PortfolioAnalysis>(`${API_URL}/api/users/${userId}/analysis`),
+    apiClient.get<PortfolioAnalysis>(`${API_URL}/api/users/${userId}/analysis`),
   
   getStockPrice: (ticker: string) => 
-    axios.get(`${API_URL}/api/stocks/${ticker}`)
+    apiClient.get(`${API_URL}/api/stocks/${ticker}`)
 };

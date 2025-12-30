@@ -47,14 +47,15 @@ export default function Portfolio({ userId, onAnalyze }: PortfolioProps) {
         const totalShares = existing.shares + newShares;
         const updatedAvgPrice =
           (existing.shares * existing.avg_price + newShares * newPrice) / totalShares;
-
-        await api.updateHolding(existing.id, {
+        console.log("updating holding...");
+        await api.updateHolding(userId, existing.id, {
           shares: totalShares,
           avg_price: updatedAvgPrice
         });
       } else {
         // Create new holding
-        await api.addHolding(userId, {
+        console.log("Create new holding...");
+        await api.addHolding({
           ticker: newTicker,
           shares: newShares,
           avg_price: newPrice

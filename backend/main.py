@@ -8,6 +8,7 @@ import os
 import requests
 from database import get_db, engine, Base
 import models
+from auth import get_current_user
 
 app = FastAPI()
 
@@ -73,22 +74,23 @@ class HoldingUpdate(BaseModel):
 
 
 # Create a holding
-@app.post("/api/users/{user_id}/holdings", response_model=HoldingResponse)
-def add_holding(user_id: int, holding: HoldingCreate, db: Session = Depends(get_db)):
-    # Check user exists
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
+@app.post("/api/holdings", response_model=HoldingResponse)
+def add_holding(
+    holding: HoldingCreate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     db_holding = models.Holding(
-        user_id=user_id,
+        user_id=current_user.id,
         ticker=holding.ticker.upper(),
         shares=holding.shares,
-        avg_price=holding.avg_price
+        avg_price=holding.avg_price,
     )
+
     db.add(db_holding)
     db.commit()
     db.refresh(db_holding)
+
     return db_holding
 
 @app.patch("/api/users/{user_id}/holdings/{holding_id}", response_model=HoldingResponse)
