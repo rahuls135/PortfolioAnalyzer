@@ -14,6 +14,8 @@ def get_current_user(
     db: Session = Depends(get_db),
 ):
     token = credentials.credentials
+    print("RAW TOKEN (first 30 chars):", token[:30])
+    print("JWT SECRET PRESENT:", bool(os.getenv("SUPABASE_JWT_SECRET")))
 
     try:
         payload = jwt.decode(

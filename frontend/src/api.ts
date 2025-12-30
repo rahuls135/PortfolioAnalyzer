@@ -75,29 +75,29 @@ export interface PortfolioAnalysis {
 
 export const api = {
   createUser: (userData: UserCreate) => 
-    apiClient.post<User>(`${API_URL}/api/users`, userData),
+    apiClient.post<User>(`/api/users`, userData),
   
   getUser: (userId: number) => 
-    apiClient.get<User>(`${API_URL}/api/users/${userId}`),
+    apiClient.get<User>(`/api/users/${userId}`),
   
   getUserBySupabaseId: (supabaseUserId: string) =>
-    apiClient.get<User>(`${API_URL}/api/users/supabase/${supabaseUserId}`),
+    apiClient.get<User>(`/api/users/supabase/${supabaseUserId}`),
   
   addHolding: (holdingData: HoldingCreate) => 
-    apiClient.post<Holding>(`${API_URL}/api/holdings`, holdingData),
+    apiClient.post<Holding>(`/api/holdings`, holdingData),
   
   updateHolding: (userId: number, holdingId: number, holdingData: Partial<HoldingCreate>) =>
-    apiClient.patch<Holding>(`${API_URL}/api/users/${userId}/holdings/${holdingId}`, holdingData),
+    apiClient.patch<Holding>(`/api/users/${userId}/holdings/${holdingId}`, holdingData),
   
   getHoldings: (userId: number) => 
-    apiClient.get<Holding[]>(`${API_URL}/api/users/${userId}/holdings`),
+    apiClient.get<Holding[]>(`/api/users/${userId}/holdings`),
   
   deleteHolding: (userId: number, holdingId: number) => 
-    apiClient.delete(`${API_URL}/api/users/${userId}/holdings/${holdingId}`),
+    apiClient.delete(`/api/users/${userId}/holdings/${holdingId}`),
   
   analyzePortfolio: (userId: number) => 
-    apiClient.get<PortfolioAnalysis>(`${API_URL}/api/users/${userId}/analysis`),
+    apiClient.get<PortfolioAnalysis>(`/api/users/${userId}/analysis`),
   
   getStockPrice: (ticker: string) => 
-    apiClient.get(`${API_URL}/api/stocks/${ticker}`)
+    apiClient.get(`/api/stocks/${ticker}`)
 };
