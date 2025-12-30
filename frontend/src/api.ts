@@ -25,7 +25,7 @@ export interface Holding {
   id: number;
   ticker: string;
   shares: number;
-  avg_price: number; // updated to match Portfolio.tsx
+  avg_price: number;
 }
 
 export interface HoldingCreate {
@@ -62,16 +62,16 @@ export const api = {
   
   getUser: (userId: number) => 
     axios.get<User>(`${API_URL}/api/users/${userId}`),
-
+  
   getUserBySupabaseId: (supabaseUserId: string) =>
     axios.get<User>(`${API_URL}/api/users/supabase/${supabaseUserId}`),
-
+  
   addHolding: (userId: number, holdingData: HoldingCreate) => 
     axios.post<Holding>(`${API_URL}/api/users/${userId}/holdings`, holdingData),
   
-  updateHolding: (holdingId: number, holdingData: Partial<HoldingCreate>) =>
-    axios.patch<Holding>(`${API_URL}/api/holdings/${holdingId}`, holdingData),
-
+  updateHolding: (userId: number, holdingId: number, holdingData: Partial<HoldingCreate>) =>
+    axios.patch<Holding>(`${API_URL}/api/users/${userId}/holdings/${holdingId}`, holdingData),
+  
   getHoldings: (userId: number) => 
     axios.get<Holding[]>(`${API_URL}/api/users/${userId}/holdings`),
   

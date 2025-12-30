@@ -84,16 +84,20 @@ def add_holding(user_id: int, holding: HoldingCreate, db: Session = Depends(get_
         user_id=user_id,
         ticker=holding.ticker.upper(),
         shares=holding.shares,
-        avg_price=holding.avgPrice
+        avg_price=holding.avg_price
     )
     db.add(db_holding)
     db.commit()
     db.refresh(db_holding)
     return db_holding
 
-@app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
-def update_holding(holding_id: int, update: HoldingUpdate = Body(...), db: Session = Depends(get_db)):
-    holding = db.query(models.Holding).filter(models.Holding.id == holding_id).first()
+@app.patch("/api/users/{user_id}/holdings/{holding_id}", response_model=HoldingResponse)
+def update_holding(user_id: int, holding_id: int, update: HoldingUpdate = Body(...), db: Session = Depends(get_db)):
+    # Fixed: Changed 'and' to comma (proper SQLAlchemy syntax)
+    holding = db.query(models.Holding).filter(
+        models.Holding.user_id == user_id,
+        models.Holding.id == holding_id
+    ).first()
     
     if not holding:
         raise HTTPException(status_code=404, detail="Holding not found")
