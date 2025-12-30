@@ -36,7 +36,7 @@ class Holding(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     ticker = Column(String, index=True)
     shares = Column(Float)
-    purchase_price = Column(Float)
+    avgPrice = Column(Float)
     purchase_date = Column(DateTime)
     
     user = relationship("User", back_populates="holdings")

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -322,3 +322,25 @@ def get_user_by_supabase_id(supabase_user_id: str, db: Session = Depends(get_db)
         "retirement_years": user.retirement_years,
         "ai_analysis": profile.ai_analysis if profile else None
     }
+
+class HoldingUpdate(BaseModel):
+    shares: float = None
+    avg_price: float = None  # use purchase_price if you haven't renamed yet
+
+@app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
+def update_holding(holding_id: int, update: HoldingUpdate = Body(...), db: Session = Depends(get_db)):
+    holding = db.query(models.Holding).filter(models.Holding.id == holding_id).first()
+    
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    
+    # Only update fields provided
+    if update.shares is not None:
+        holding.shares = update.shares
+    if update.avg_price is not None:
+        holding.avg_price = update.avg_price  # or holding.purchase_price if you haven't renamed
+    
+    db.commit()
+    db.refresh(holding)
+    
+    return holding
