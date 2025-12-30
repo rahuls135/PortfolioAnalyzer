@@ -36,6 +36,7 @@ def setup_database():
 
 # Pydantic models
 class UserCreate(BaseModel):
+    supabase_user_id: str
     age: int
     income: float
     risk_tolerance: str
@@ -43,6 +44,7 @@ class UserCreate(BaseModel):
 
 class UserResponse(BaseModel):
     id: int
+    supabase_user_id: str
     age: int
     income: float
     risk_tolerance: str
@@ -159,8 +161,17 @@ def get_stock_data(ticker: str, db: Session = Depends(get_db)):
 
 @app.post("/api/users", response_model=UserResponse)
 def create_user_profile(user: UserCreate, db: Session = Depends(get_db)):
+    # Check if user already exists
+    existing_user = db.query(models.User).filter(
+        models.User.supabase_user_id == user.supabase_user_id
+    ).first()
+    
+    if existing_user:
+        raise HTTPException(status_code=400, detail="User profile already exists")
+    
     # Create user
     db_user = models.User(
+        supabase_user_id=user.supabase_user_id,
         age=user.age,
         income=user.income,
         risk_tolerance=user.risk_tolerance,
@@ -170,7 +181,7 @@ def create_user_profile(user: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_user)
     
-    # Mock AI analysis (replace with real LLM later)
+    # Mock AI analysis
     ai_analysis = f"""Based on your profile (age {user.age}, {user.retirement_years} years to retirement, {user.risk_tolerance} risk tolerance):
 
 Recommended Allocation:
@@ -186,7 +197,6 @@ Key Recommendations:
 
 Focus sectors: Technology, Healthcare, Consumer Discretionary, Financials"""
     
-    # Create user profile
     db_profile = models.UserProfile(
         user_id=db_user.id,
         ai_analysis=ai_analysis
@@ -195,8 +205,12 @@ Focus sectors: Technology, Healthcare, Consumer Discretionary, Financials"""
     db.commit()
     
     return {
-        **user.dict(),
         "id": db_user.id,
+        "supabase_user_id": db_user.supabase_user_id,
+        "age": db_user.age,
+        "income": db_user.income,
+        "risk_tolerance": db_user.risk_tolerance,
+        "retirement_years": db_user.retirement_years,
         "ai_analysis": ai_analysis
     }
 
@@ -284,4 +298,27 @@ Risk Assessment: Your {user.risk_tolerance} risk tolerance is {"well-suited" if 
             "risk_tolerance": user.risk_tolerance,
             "retirement_years": user.retirement_years
         }
+    }
+
+@app.get("/api/users/supabase/{supabase_user_id}", response_model=UserResponse)
+def get_user_by_supabase_id(supabase_user_id: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(
+        models.User.supabase_user_id == supabase_user_id
+    ).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    profile = db.query(models.UserProfile).filter(
+        models.UserProfile.user_id == user.id
+    ).first()
+    
+    return {
+        "id": user.id,
+        "supabase_user_id": user.supabase_user_id,
+        "age": user.age,
+        "income": user.income,
+        "risk_tolerance": user.risk_tolerance,
+        "retirement_years": user.retirement_years,
+        "ai_analysis": profile.ai_analysis if profile else None
     }

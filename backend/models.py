@@ -7,13 +7,13 @@ class User(Base):
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
+    supabase_user_id = Column(String, unique=True, index=True)
     age = Column(Integer)
     income = Column(Float)
-    risk_tolerance = Column(String)  # "conservative", "moderate", "aggressive"
-    retirement_years = Column(Integer)  # years until retirement
+    risk_tolerance = Column(String)
+    retirement_years = Column(Integer)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
-    # Relationship to portfolio
     holdings = relationship("Holding", back_populates="user")
     profile = relationship("UserProfile", back_populates="user", uselist=False)
 
