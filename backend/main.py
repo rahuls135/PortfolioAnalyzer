@@ -3,10 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 import os
 import requests
-
 from database import get_db, engine, Base
 import models
 
@@ -54,19 +53,24 @@ class UserResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class HoldingCreate(BaseModel):
+class HoldingBase(BaseModel):
     ticker: str
     shares: float
     avg_price: float
 
-class HoldingResponse(BaseModel):
+class HoldingCreate(HoldingBase):
+    pass
+
+class HoldingResponse(HoldingBase):
     id: int
-    ticker: str
-    shares: float
-    avg_price: float
-    
+
     class Config:
         from_attributes = True
+
+class HoldingUpdate(BaseModel):
+    shares: Optional[float] = None
+    avg_price: Optional[float] = None
+
 
 # Create a holding
 @app.post("/api/users/{user_id}/holdings", response_model=HoldingResponse)
@@ -86,6 +90,24 @@ def add_holding(user_id: int, holding: HoldingCreate, db: Session = Depends(get_
     db.commit()
     db.refresh(db_holding)
     return db_holding
+
+@app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
+def update_holding(holding_id: int, update: HoldingUpdate = Body(...), db: Session = Depends(get_db)):
+    holding = db.query(models.Holding).filter(models.Holding.id == holding_id).first()
+    
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    
+    # Only update fields provided
+    if update.shares is not None:
+        holding.shares = update.shares
+    if update.avg_price is not None:
+        holding.avg_price = update.avg_price
+    
+    db.commit()
+    db.refresh(holding)
+    
+    return holding
 
 # Get all holdings for a user
 @app.get("/api/users/{user_id}/holdings", response_model=List[HoldingResponse])
@@ -319,25 +341,3 @@ def get_user_by_supabase_id(supabase_user_id: str, db: Session = Depends(get_db)
         "retirement_years": user.retirement_years,
         "ai_analysis": profile.ai_analysis if profile else None
     }
-
-class HoldingUpdate(BaseModel):
-    shares: float = None
-    avg_price: float = None 
-
-@app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
-def update_holding(holding_id: int, update: HoldingUpdate = Body(...), db: Session = Depends(get_db)):
-    holding = db.query(models.Holding).filter(models.Holding.id == holding_id).first()
-    
-    if not holding:
-        raise HTTPException(status_code=404, detail="Holding not found")
-    
-    # Only update fields provided
-    if update.shares is not None:
-        holding.shares = update.shares
-    if update.avg_price is not None:
-        holding.avg_price = update.avg_price
-    
-    db.commit()
-    db.refresh(holding)
-    
-    return holding
