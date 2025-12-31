@@ -1,22 +1,26 @@
-from fastapi import FastAPI, Depends, HTTPException, Body
+from fastapi import FastAPI, Depends, HTTPException, Body, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, time
 from typing import List, Optional
 import os
 import requests
+from zoneinfo import ZoneInfo
 from database import get_db, engine, Base
 import models
 from auth import get_current_user
 
 app = FastAPI()
 
+FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGINS", "")
+ALLOW_ORIGINS = [o.strip() for o in FRONTEND_ORIGINS.split(",") if o.strip()] or ["http://localhost:3000"]
+
 # Allow frontend to make requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify your frontend URL
-    allow_credentials=True,
+    allow_origins=ALLOW_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -62,9 +66,51 @@ def health_check():
     return {"status": "healthy"}
 
 @app.get("/setup-db")
-def setup_database():
+def setup_database(x_admin_token: str = Header(default="")):
+    expected_token = os.getenv("ADMIN_SETUP_TOKEN", "")
+    if not expected_token or x_admin_token != expected_token:
+        raise HTTPException(status_code=403, detail="Setup not allowed")
     Base.metadata.create_all(bind=engine)
     return {"message": "Database tables created successfully"}
+
+MARKET_TZ = ZoneInfo("America/New_York")
+MARKET_OPEN = time(9, 30)
+MARKET_CLOSE = time(16, 0)
+
+def _last_market_close(now_et: datetime) -> datetime:
+    if now_et.weekday() >= 5:
+        d = now_et.date()
+        while d.weekday() >= 5:
+            d -= timedelta(days=1)
+        return datetime.combine(d, MARKET_CLOSE, tzinfo=MARKET_TZ)
+    if now_et.time() >= MARKET_CLOSE:
+        return datetime.combine(now_et.date(), MARKET_CLOSE, tzinfo=MARKET_TZ)
+    d = now_et.date() - timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return datetime.combine(d, MARKET_CLOSE, tzinfo=MARKET_TZ)
+
+def _next_market_open(now_et: datetime) -> datetime:
+    if now_et.weekday() >= 5:
+        d = now_et.date()
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        return datetime.combine(d, MARKET_OPEN, tzinfo=MARKET_TZ)
+    if now_et.time() < MARKET_OPEN:
+        return datetime.combine(now_et.date(), MARKET_OPEN, tzinfo=MARKET_TZ)
+    d = now_et.date() + timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return datetime.combine(d, MARKET_OPEN, tzinfo=MARKET_TZ)
+
+def _market_closed_cache_valid(last_updated_utc: datetime, now_utc: datetime) -> bool:
+    now_et = now_utc.astimezone(MARKET_TZ)
+    if now_et.weekday() < 5 and MARKET_OPEN <= now_et.time() < MARKET_CLOSE:
+        return False
+    last_close = _last_market_close(now_et)
+    next_open = _next_market_open(now_et)
+    last_et = last_updated_utc.astimezone(MARKET_TZ)
+    return last_et >= last_close and now_et < next_open
 
 @app.post("/api/holdings", response_model=HoldingResponse)
 def upsert_holding(
@@ -165,16 +211,23 @@ def delete_holding(
     return {"message": "Holding deleted"}
 
 @app.get("/api/stocks/{ticker}")
-def get_stock_data(ticker: str, db: Session = Depends(get_db)):
+def get_stock_data(
+    ticker: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     ticker = ticker.upper()
     api_key = os.getenv("ALPHA_VANTAGE_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
     
     # 1. Check cache (24-hour rule)
     stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
     if stock and stock.last_updated:
         # Normalize timezone for comparison
         last_updated = stock.last_updated.replace(tzinfo=timezone.utc)
-        if (datetime.now(timezone.utc) - last_updated).total_seconds() < 86400:
+        now_utc = datetime.now(timezone.utc)
+        if (now_utc - last_updated).total_seconds() < 86400 or _market_closed_cache_valid(last_updated, now_utc):
             return {
                 "ticker": stock.ticker,
                 "current_price": stock.current_price,
@@ -186,6 +239,8 @@ def get_stock_data(ticker: str, db: Session = Depends(get_db)):
     price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
     price_res = requests.get(price_url).json()
     
+    if price_res.get("Note") or price_res.get("Information"):
+        raise HTTPException(status_code=429, detail="Alpha Vantage rate limit reached")
     if "Global Quote" not in price_res or not price_res["Global Quote"]:
         raise HTTPException(status_code=404, detail="Stock price not found")
     

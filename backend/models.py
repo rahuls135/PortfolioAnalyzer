@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from database import Base
@@ -31,6 +31,9 @@ class UserProfile(Base):
 
 class Holding(Base):
     __tablename__ = "holdings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "ticker", name="uq_holdings_user_ticker"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
