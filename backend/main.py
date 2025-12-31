@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Body, Header
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -13,10 +13,10 @@ from auth import get_current_user
 
 app = FastAPI()
 
-FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGINS", "")
-ALLOW_ORIGINS = [o.strip() for o in FRONTEND_ORIGINS.split(",") if o.strip()] or ["http://localhost:3000"]
-
 # Allow frontend to make requests
+FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGINS", "")
+ALLOW_ORIGINS = [o.strip() for o in FRONTEND_ORIGINS.split(",") if o.strip()] or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOW_ORIGINS,
@@ -64,14 +64,6 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
-
-@app.get("/setup-db")
-def setup_database(x_admin_token: str = Header(default="")):
-    expected_token = os.getenv("ADMIN_SETUP_TOKEN", "")
-    if not expected_token or x_admin_token != expected_token:
-        raise HTTPException(status_code=403, detail="Setup not allowed")
-    Base.metadata.create_all(bind=engine)
-    return {"message": "Database tables created successfully"}
 
 MARKET_TZ = ZoneInfo("America/New_York")
 MARKET_OPEN = time(9, 30)
