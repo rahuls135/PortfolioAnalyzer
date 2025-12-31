@@ -40,7 +40,7 @@ function App() {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        await checkExistingProfile(session.user.id);
+        await checkExistingProfile();
       } else {
         setUserId(null);
         setView('profile');
@@ -50,8 +50,7 @@ function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const checkExistingProfile = async (supabaseUserId: string) => {
-    console.log('Checking for existing profile with ID:', supabaseUserId);
+  const checkExistingProfile = async () => {
     
     try {
       const response = await api.getProfile();
@@ -84,10 +83,8 @@ function App() {
   };
 
   const handleAnalyze = async () => {
-    if (!userId) return;
-    
     try {
-      const response = await api.analyzePortfolio(userId);
+      const response = await api.analyzePortfolio();
       setPortfolioAnalysis(response.data);
       setView('analysis');
     } catch (error) {

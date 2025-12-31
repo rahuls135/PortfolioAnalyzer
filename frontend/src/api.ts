@@ -81,11 +81,14 @@ export const api = {
   getUser: (userId: number) => 
     apiClient.get<User>(`/api/users/${userId}`),
   
-  getUserBySupabaseId: () =>
+  getProfile: () =>
     apiClient.get<User>(`/api/users/me`),
   
   addHolding: (holdingData: HoldingCreate) => 
     apiClient.post<Holding>(`/api/holdings`, holdingData),
+
+  updateHolding: (id: number, data: { shares?: number; avg_price?: number }) => 
+    axios.patch(`/api/holdings/${id}`, data),
   
   getHoldings: () => 
     apiClient.get<Holding[]>(`/api/holdings`),

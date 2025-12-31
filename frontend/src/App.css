@@ -170,3 +170,67 @@ table th {
 .sign-out-btn:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+/* Action buttons in table */
+.btn-edit,
+.btn-delete,
+.btn-save,
+.btn-cancel {
+  padding: 0.4rem 0.8rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin-right: 0.5rem;
+  transition: opacity 0.2s;
+}
+
+.btn-edit {
+  background: #3b82f6;
+  color: white;
+}
+
+.btn-edit:hover {
+  background: #2563eb;
+}
+
+.btn-delete {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-delete:hover {
+  background: #dc2626;
+}
+
+.btn-save {
+  background: #22c55e;
+  color: white;
+}
+
+.btn-save:hover {
+  background: #16a34a;
+}
+
+.btn-cancel {
+  background: #6b7280;
+  color: white;
+}
+
+.btn-cancel:hover {
+  background: #4b5563;
+}
+
+.edit-input {
+  width: 100px;
+  padding: 0.4rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+table th:last-child,
+table td:last-child {
+  text-align: center;
+  width: 180px;
+}

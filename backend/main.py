@@ -110,6 +110,32 @@ def upsert_holding(
     db.refresh(new_holding)
     return new_holding
 
+@app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
+def update_holding(
+    holding_id: int, 
+    update: HoldingUpdate, 
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Ensure the user owns this specific holding ID
+    holding = db.query(models.Holding).filter(
+        models.Holding.id == holding_id,
+        models.Holding.user_id == current_user.id
+    ).first()
+    
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    
+    # Update fields manually
+    if update.shares is not None:
+        holding.shares = update.shares
+    if update.avg_price is not None:
+        holding.avg_price = update.avg_price
+    
+    db.commit()
+    db.refresh(holding)
+    return holding
+
 # Get all holdings for a user
 @app.get("/api/holdings", response_model=List[HoldingResponse])
 def get_holdings(
