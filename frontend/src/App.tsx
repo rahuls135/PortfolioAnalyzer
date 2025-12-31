@@ -126,10 +126,7 @@ function App() {
 
       <main className="container">
         {!userId && view === 'profile' && (
-          <ProfileForm 
-            supabaseUserId={user.id}
-            onProfileCreated={handleProfileCreated}
-          />
+          <ProfileForm onProfileCreated={handleProfileCreated} />
         )}
 
         {userId && view === 'portfolio' && (

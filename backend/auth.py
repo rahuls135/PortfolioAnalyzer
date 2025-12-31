@@ -25,17 +25,9 @@ jwks_client = PyJWKClient(
     }
 )
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db),
-):
-    token = credentials.credentials
-
+def _decode_supabase_token(token: str) -> str:
     try:
-        # 1. Get the correct signing key from the JWKS
         signing_key = jwks_client.get_signing_key_from_jwt(token)
-
-        # 2. Decode the payload
         payload = jwt.decode(
             token,
             signing_key.key,
@@ -47,12 +39,24 @@ def get_current_user(
     except jwt.InvalidTokenError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
 
-    # 3. Extract the Supabase UUID (the 'sub' claim)
     supabase_user_id = payload.get("sub")
     if not supabase_user_id:
         raise HTTPException(status_code=401, detail="User ID missing from token")
+    return supabase_user_id
 
-    # 4. Fetch the actual user from your database
+
+def get_supabase_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> str:
+    return _decode_supabase_token(credentials.credentials)
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db),
+):
+    supabase_user_id = _decode_supabase_token(credentials.credentials)
+
     user = (
         db.query(models.User)
         .filter(models.User.supabase_user_id == supabase_user_id)
@@ -60,8 +64,6 @@ def get_current_user(
     )
 
     if not user:
-        # This happens if the user exists in Supabase but hasn't 
-        # been synced/created in your local database yet.
         raise HTTPException(status_code=401, detail="User not found in local database")
 
     return user

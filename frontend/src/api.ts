@@ -32,7 +32,6 @@ export interface User {
 }
 
 export interface UserCreate {
-  supabase_user_id: string;
   age: number;
   income: number;
   risk_tolerance: string;

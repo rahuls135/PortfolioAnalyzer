@@ -9,7 +9,7 @@ import requests
 from zoneinfo import ZoneInfo
 from database import get_db, engine, Base
 import models
-from auth import get_current_user
+from auth import get_current_user, get_supabase_user_id
 
 app = FastAPI()
 
@@ -271,10 +271,14 @@ def get_stock_data(
     }
 
 @app.post("/api/users", response_model=UserResponse)
-def create_user_profile(user: UserCreate, db: Session = Depends(get_db)):
+def create_user_profile(
+    user: UserCreate,
+    supabase_user_id: str = Depends(get_supabase_user_id),
+    db: Session = Depends(get_db),
+):
     # Check if user already exists
     existing_user = db.query(models.User).filter(
-        models.User.supabase_user_id == user.supabase_user_id
+        models.User.supabase_user_id == supabase_user_id
     ).first()
     
     if existing_user:
@@ -282,7 +286,7 @@ def create_user_profile(user: UserCreate, db: Session = Depends(get_db)):
     
     # Create user
     db_user = models.User(
-        supabase_user_id=user.supabase_user_id,
+        supabase_user_id=supabase_user_id,
         age=user.age,
         income=user.income,
         risk_tolerance=user.risk_tolerance,

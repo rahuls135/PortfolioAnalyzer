@@ -2,11 +2,10 @@ import { useState } from 'react';
 import { api } from '../api';
 
 interface ProfileFormProps {
-  supabaseUserId: string;
   onProfileCreated: (userId: number) => void;
 }
 
-export default function ProfileForm({ supabaseUserId, onProfileCreated }: ProfileFormProps) {
+export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
   const [age, setAge] = useState('');
   const [income, setIncome] = useState('');
   const [riskTolerance, setRiskTolerance] = useState('moderate');
@@ -17,7 +16,6 @@ export default function ProfileForm({ supabaseUserId, onProfileCreated }: Profil
     
     try {
       const response = await api.createUser({
-        supabase_user_id: supabaseUserId,
         age: parseInt(age),
         income: parseFloat(income),
         risk_tolerance: riskTolerance,
