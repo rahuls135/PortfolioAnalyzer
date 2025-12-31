@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import type { Holding } from '../api';
+import type { Holding, HoldingCreate } from '../api';
 
 interface PortfolioProps {
   onAnalyze: () => void;
@@ -73,7 +73,7 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
     setEditAvgPrice('');
   };
 
-  const handleSaveEdit = async (holdingId: number) => {
+  const handleSaveEdit = async (holding: Holding) => { // Pass the whole holding object
     const newShares = parseFloat(editShares);
     const newPrice = parseFloat(editAvgPrice);
 
@@ -83,7 +83,9 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
     }
 
     try {
-      await api.updateHolding(holdingId, {
+      // We send ticker, shares, and avg_price to satisfy HoldingCreate
+      await api.updateHolding(holding.id, {
+        ticker: holding.ticker, 
         shares: newShares,
         avg_price: newPrice
       });
@@ -94,7 +96,7 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
     } catch (error) {
       alert('Error updating holding: ' + (error as Error).message);
     }
-  };
+};
 
   const handleDelete = async (holdingId: number, ticker: string) => {
     if (!confirm(`Are you sure you want to delete ${ticker}?`)) {
@@ -185,7 +187,7 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
                       </td>
                       <td>
                         <button 
-                          onClick={() => handleSaveEdit(holding.id)}
+                          onClick={() => handleSaveEdit(holding)}
                           className="btn-save"
                         >
                           Save

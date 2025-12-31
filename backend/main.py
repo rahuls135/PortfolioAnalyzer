@@ -113,11 +113,11 @@ def upsert_holding(
 @app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
 def update_holding(
     holding_id: int, 
-    update: HoldingUpdate, 
+    update: HoldingCreate,  # Reusing the class you already have
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Ensure the user owns this specific holding ID
+    # Find the holding by ID and ensure it belongs to the user
     holding = db.query(models.Holding).filter(
         models.Holding.id == holding_id,
         models.Holding.user_id == current_user.id
@@ -126,11 +126,11 @@ def update_holding(
     if not holding:
         raise HTTPException(status_code=404, detail="Holding not found")
     
-    # Update fields manually
-    if update.shares is not None:
-        holding.shares = update.shares
-    if update.avg_price is not None:
-        holding.avg_price = update.avg_price
+    # Update the values using the HoldingCreate model
+    holding.shares = update.shares
+    holding.avg_price = update.avg_price
+    # If you want to allow ticker changes (typo fix):
+    holding.ticker = update.ticker.upper()
     
     db.commit()
     db.refresh(holding)

@@ -87,7 +87,7 @@ export const api = {
   addHolding: (holdingData: HoldingCreate) => 
     apiClient.post<Holding>(`/api/holdings`, holdingData),
 
-  updateHolding: (id: number, data: { shares?: number; avg_price?: number }) => 
+  updateHolding: (id: number, data: { ticker: string; shares: number; avg_price: number }) => 
     axios.patch(`/api/holdings/${id}`, data),
   
   getHoldings: () => 
