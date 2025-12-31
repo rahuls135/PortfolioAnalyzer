@@ -93,18 +93,22 @@ def add_holding(
 
     return db_holding
 
-@app.patch("/api/users/{user_id}/holdings/{holding_id}", response_model=HoldingResponse)
-def update_holding(user_id: int, holding_id: int, update: HoldingUpdate = Body(...), db: Session = Depends(get_db)):
-    # Fixed: Changed 'and' to comma (proper SQLAlchemy syntax)
+@app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
+def update_holding(
+    holding_id: int, 
+    update: HoldingUpdate, 
+    current_user: models.User = Depends(get_current_user), # Use your auth!
+    db: Session = Depends(get_db)
+):
+    # Verify the holding exists AND belongs to THIS user
     holding = db.query(models.Holding).filter(
-        models.Holding.user_id == user_id,
-        models.Holding.id == holding_id
+        models.Holding.id == holding_id,
+        models.Holding.user_id == current_user.id
     ).first()
     
     if not holding:
         raise HTTPException(status_code=404, detail="Holding not found")
     
-    # Only update fields provided
     if update.shares is not None:
         holding.shares = update.shares
     if update.avg_price is not None:
@@ -112,7 +116,6 @@ def update_holding(user_id: int, holding_id: int, update: HoldingUpdate = Body(.
     
     db.commit()
     db.refresh(holding)
-    
     return holding
 
 # Get all holdings for a user
