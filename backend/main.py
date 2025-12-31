@@ -247,26 +247,41 @@ def analyze_portfolio(
     db: Session = Depends(get_db)
 ):
     """Perform portfolio math and AI analysis for the logged-in user."""
+    # 1. Fetch holdings for the user identified by JWT
     holdings = db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
+    
     if not holdings:
-        return {"message": "No holdings to analyze"}
+        return {
+            "total_value": 0,
+            "holdings": [],
+            "ai_analysis": "Add some holdings to see your portfolio analysis!",
+            "user_profile": {
+                "age": current_user.age,
+                "risk_tolerance": current_user.risk_tolerance,
+                "retirement_years": current_user.retirement_years
+            }
+        }
 
-    # Calculate portfolio value and get current prices
     portfolio_summary = []
     total_value = 0
     
     for holding in holdings:
-        # Get current stock price
+        # 2. Get stock price (Check cache first)
         stock = db.query(models.StockData).filter(models.StockData.ticker == holding.ticker).first()
         
         if not stock:
-            # Fetch it if not in cache
             try:
+                # This triggers the Alpha Vantage fetch logic
                 get_stock_data(holding.ticker, db)
                 stock = db.query(models.StockData).filter(models.StockData.ticker == holding.ticker).first()
-            except:
+            except Exception as e:
+                print(f"Could not fetch data for {holding.ticker}: {e}")
                 continue
         
+        if not stock:
+            continue
+
+        # 3. Math calculations
         current_value = holding.shares * stock.current_price
         cost_basis = holding.shares * holding.avg_price
         gain_loss = current_value - cost_basis
@@ -280,21 +295,23 @@ def analyze_portfolio(
             "current_value": current_value,
             "gain_loss": gain_loss,
             "gain_loss_pct": gain_loss_pct,
-            "sector": stock.sector
+            "sector": getattr(stock, 'sector', 'Unknown') # Safely handle missing sector
         })
         
         total_value += current_value
     
-    # Mock AI analysis (replace with real LLM later)
+    # 4. Analysis Logic (using current_user)
     tickers = [h['ticker'] for h in portfolio_summary]
     tech_stocks = ['AAPL', 'MSFT', 'GOOGL', 'NVDA', 'TSLA', 'META', 'AMZN']
     tech_count = sum(1 for t in tickers if t in tech_stocks)
     
-    if tech_count / len(tickers) > 0.6:
-        diversification_note = "Your portfolio is heavily concentrated in technology stocks. Consider diversifying into other sectors like healthcare, consumer staples, or utilities."
+    concentration = tech_count / len(tickers) if tickers else 0
+    if concentration > 0.6:
+        diversification_note = "Your portfolio is heavily concentrated in technology. Consider diversifying into healthcare or utilities."
     else:
         diversification_note = "Your portfolio shows good sector diversification."
     
+    # Use current_user instead of 'user'
     ai_analysis = f"""Portfolio Analysis Summary:
 
 Overall Assessment:
@@ -304,21 +321,20 @@ Holdings Breakdown:
 {chr(10).join([f"• {h['ticker']}: ${h['current_value']:.2f} ({h['gain_loss_pct']:+.1f}%)" for h in portfolio_summary])}
 
 Key Recommendations:
-1. Review your positions regularly to maintain target allocation
-2. Consider tax-loss harvesting opportunities on underperforming positions
-3. Rebalance quarterly to maintain your desired risk profile
-4. {"Keep your long-term perspective with " + str(user.retirement_years) + " years until retirement"}
+1. Review your positions regularly to maintain target allocation.
+2. Consider tax-loss harvesting on underperforming positions.
+3. Keep your long-term perspective with {current_user.retirement_years} years until retirement.
 
-Risk Assessment: Your {user.risk_tolerance} risk tolerance is {"well-suited" if user.retirement_years > 20 else "slightly aggressive"} for your timeline."""
+Risk Assessment: Your {current_user.risk_tolerance} risk tolerance is {"well-suited" if current_user.retirement_years > 20 else "slightly aggressive"} for your timeline."""
     
     return {
         "total_value": total_value,
         "holdings": portfolio_summary,
         "ai_analysis": ai_analysis,
         "user_profile": {
-            "age": user.age,
-            "risk_tolerance": user.risk_tolerance,
-            "retirement_years": user.retirement_years
+            "age": current_user.age,
+            "risk_tolerance": current_user.risk_tolerance,
+            "retirement_years": current_user.retirement_years
         }
     }
 
