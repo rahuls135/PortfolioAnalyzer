@@ -11,10 +11,19 @@ import models
 security = HTTPBearer()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-JWKS_URL = f"{SUPABASE_URL}/auth/v1/jwks"
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") # You need this!
 
-# Initialize the JWK Client once at the module level for caching
-jwks_client = PyJWKClient(JWKS_URL)
+# Correct JWKS URL format for Supabase
+JWKS_URL = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+
+# Initialize with headers
+jwks_client = PyJWKClient(
+    JWKS_URL,
+    headers={
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+    }
+)
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
