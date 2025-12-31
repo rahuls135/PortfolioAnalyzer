@@ -30,6 +30,8 @@ def get_current_user(
         # Get token header (to read `kid`)
         print('before header')
         header = jwt.get_unverified_header(token)
+        print("Token header:", jwt.get_unverified_header(token))
+        print("JWKS keys:", [k["kid"] for k in keys])
         kid = header.get("kid")
         if not kid:
             raise HTTPException(status_code=401, detail="Invalid token header")
