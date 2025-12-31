@@ -11,7 +11,7 @@ import models
 security = HTTPBearer()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY") # You need this!
+SUPABASE_PUB_KEY = os.getenv("SUPABASE_PUB_KEY") # You need this!
 
 # Correct JWKS URL format for Supabase
 JWKS_URL = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
@@ -20,8 +20,8 @@ JWKS_URL = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
 jwks_client = PyJWKClient(
     JWKS_URL,
     headers={
-        "apikey": SUPABASE_ANON_KEY,
-        "Authorization": f"Bearer {SUPABASE_ANON_KEY}"
+        "apikey": SUPABASE_PUB_KEY,
+        "Authorization": f"Bearer {SUPABASE_PUB_KEY}"
     }
 )
 
