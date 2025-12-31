@@ -42,8 +42,11 @@ def get_current_user(
         print("fetched jwks")
 
         # Find matching key
+        print("before find key")
         key = next((k for k in keys if k["kid"] == kid), None)
+        print("after find key")
         if not key:
+            print("not key")
             raise HTTPException(status_code=401, detail="Signing key not found")
         
         print("JWT length:", len(token))
