@@ -13,6 +13,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ):
+    print("Authorization header received:", credentials)
     token = credentials.credentials
     print("RAW TOKEN (first 30 chars):", token[:30])
     print("JWT SECRET PRESENT:", bool(os.getenv("SUPABASE_JWT_SECRET")))
@@ -24,7 +25,9 @@ def get_current_user(
             algorithms=["HS256"],
             options={"verify_aud": False}  # <-- skip audience check for now
         )
-    except JWTError:
+        print("payload:", payload)
+    except JWTError as e:
+        print("JWT decode error:", e)
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     supabase_user_id = payload.get("sub")
