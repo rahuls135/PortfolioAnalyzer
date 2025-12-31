@@ -54,7 +54,7 @@ function App() {
     console.log('Checking for existing profile with ID:', supabaseUserId);
     
     try {
-      const response = await api.getUserBySupabaseId(supabaseUserId);
+      const response = await api.getProfile();
       console.log('Profile found:', response.data);
       
       // User profile exists, go straight to portfolio

@@ -21,22 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
-def read_root():
-    return {"message": "Portfolio Analyzer API", "status": "running"}
-
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
-
-@app.get("/setup-db")
-def setup_database():
-    Base.metadata.create_all(bind=engine)
-    return {"message": "Database tables created successfully"}
-
-# Pydantic models
+# --- Pydantic Models ---
 class UserCreate(BaseModel):
-    supabase_user_id: str
     age: int
     income: float
     risk_tolerance: str
@@ -49,7 +35,7 @@ class UserResponse(BaseModel):
     income: float
     risk_tolerance: str
     retirement_years: int
-    ai_analysis: str = None
+    ai_analysis: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -64,14 +50,21 @@ class HoldingCreate(HoldingBase):
 
 class HoldingResponse(HoldingBase):
     id: int
-
     class Config:
         from_attributes = True
 
-class HoldingUpdate(BaseModel):
-    shares: Optional[float] = None
-    avg_price: Optional[float] = None
+@app.get("/")
+def read_root():
+    return {"message": "Portfolio Analyzer API", "status": "running"}
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
+@app.get("/setup-db")
+def setup_database():
+    Base.metadata.create_all(bind=engine)
+    return {"message": "Database tables created successfully"}
 
 @app.post("/api/holdings", response_model=HoldingResponse)
 def upsert_holding(
@@ -118,17 +111,24 @@ def upsert_holding(
     return new_holding
 
 # Get all holdings for a user
-@app.get("/api/users/{user_id}/holdings", response_model=List[HoldingResponse])
-def get_holdings(user_id: int, db: Session = Depends(get_db)):
-    holdings = db.query(models.Holding).filter(models.Holding.user_id == user_id).all()
-    return holdings
+@app.get("/api/holdings", response_model=List[HoldingResponse])
+def get_holdings(
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
 
 # Delete a holding
-@app.delete("/api/users/{user_id}/holdings/{holding_id}")
-def delete_holding(user_id: int, holding_id: int, db: Session = Depends(get_db)):
+@app.delete("/api/holdings/{holding_id}")
+def delete_holding(
+    holding_id: int, 
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """Delete a specific holding if owned by the user."""
     holding = db.query(models.Holding).filter(
         models.Holding.id == holding_id,
-        models.Holding.user_id == user_id
+        models.Holding.user_id == current_user.id
     ).first()
     
     if not holding:
@@ -241,21 +241,16 @@ Focus sectors: Technology, Healthcare, Consumer Discretionary, Financials"""
         "ai_analysis": ai_analysis
     }
 
-@app.get("/api/users/{user_id}/analysis")
-def analyze_portfolio(user_id: int, db: Session = Depends(get_db)):
-    # Get user and their profile
-    user = db.query(models.User).filter(models.User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == user_id).first()
-    
-    # Get all holdings
-    holdings = db.query(models.Holding).filter(models.Holding.user_id == user_id).all()
-    
+@app.get("/api/analysis")
+def analyze_portfolio(
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """Perform portfolio math and AI analysis for the logged-in user."""
+    holdings = db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
     if not holdings:
         return {"message": "No holdings to analyze"}
-    
+
     # Calculate portfolio value and get current prices
     portfolio_summary = []
     total_value = 0
@@ -327,25 +322,20 @@ Risk Assessment: Your {user.risk_tolerance} risk tolerance is {"well-suited" if 
         }
     }
 
-@app.get("/api/users/supabase/{supabase_user_id}", response_model=UserResponse)
-def get_user_by_supabase_id(supabase_user_id: str, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(
-        models.User.supabase_user_id == supabase_user_id
-    ).first()
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    profile = db.query(models.UserProfile).filter(
-        models.UserProfile.user_id == user.id
-    ).first()
+@app.get("/api/users/me", response_model=UserResponse)
+def get_my_profile(
+    current_user: models.User = Depends(get_current_user), 
+    db: Session = Depends(get_db)
+):
+    """Fetch the logged-in user's profile and AI analysis."""
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
     
     return {
-        "id": user.id,
-        "supabase_user_id": user.supabase_user_id,
-        "age": user.age,
-        "income": user.income,
-        "risk_tolerance": user.risk_tolerance,
-        "retirement_years": user.retirement_years,
+        "id": current_user.id,
+        "supabase_user_id": current_user.supabase_user_id,
+        "age": current_user.age,
+        "income": current_user.income,
+        "risk_tolerance": current_user.risk_tolerance,
+        "retirement_years": current_user.retirement_years,
         "ai_analysis": profile.ai_analysis if profile else None
     }

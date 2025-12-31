@@ -19,7 +19,7 @@ export default function Portfolio({ userId, onAnalyze }: PortfolioProps) {
 
   const loadHoldings = async () => {
     try {
-      const response = await api.getHoldings(userId);
+      const response = await api.getHoldings();
       setHoldings(response.data);
     } catch (error) {
       console.error('Error loading holdings:', error);

@@ -81,20 +81,20 @@ export const api = {
   getUser: (userId: number) => 
     apiClient.get<User>(`/api/users/${userId}`),
   
-  getUserBySupabaseId: (supabaseUserId: string) =>
-    apiClient.get<User>(`/api/users/supabase/${supabaseUserId}`),
+  getUserBySupabaseId: () =>
+    apiClient.get<User>(`/api/users/me`),
   
   addHolding: (holdingData: HoldingCreate) => 
     apiClient.post<Holding>(`/api/holdings`, holdingData),
   
-  getHoldings: (userId: number) => 
-    apiClient.get<Holding[]>(`/api/users/${userId}/holdings`),
+  getHoldings: () => 
+    apiClient.get<Holding[]>(`/api/holdings`),
   
-  deleteHolding: (userId: number, holdingId: number) => 
-    apiClient.delete(`/api/users/${userId}/holdings/${holdingId}`),
+  deleteHolding: (holdingId: number) => 
+    apiClient.delete(`/api/holdings/${holdingId}`),
   
-  analyzePortfolio: (userId: number) => 
-    apiClient.get<PortfolioAnalysis>(`/api/users/${userId}/analysis`),
+  analyzePortfolio: () => 
+    apiClient.get<PortfolioAnalysis>(`/api/analysis`),
   
   getStockPrice: (ticker: string) => 
     apiClient.get(`/api/stocks/${ticker}`)
