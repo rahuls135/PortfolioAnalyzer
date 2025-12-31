@@ -167,38 +167,48 @@ def delete_holding(
 @app.get("/api/stocks/{ticker}")
 def get_stock_data(ticker: str, db: Session = Depends(get_db)):
     ticker = ticker.upper()
-    
-    # Check if we have recent data (less than 1 day old)
-    stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
-    if stock and (datetime.now(timezone.utc) - stock.last_updated).seconds < 86400:
-        return {
-            "ticker": stock.ticker,
-            "current_price": stock.current_price,
-            "sector": stock.sector,
-            "cached": True
-        }
-    
-    # Fetch from Alpha Vantage
     api_key = os.getenv("ALPHA_VANTAGE_KEY")
-    url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
     
-    response = requests.get(url)
-    data = response.json()
+    # 1. Check cache (24-hour rule)
+    stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
+    if stock and stock.last_updated:
+        # Normalize timezone for comparison
+        last_updated = stock.last_updated.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - last_updated).total_seconds() < 86400:
+            return {
+                "ticker": stock.ticker,
+                "current_price": stock.current_price,
+                "sector": stock.sector or "Unknown",
+                "cached": True
+            }
     
-    if "Global Quote" not in data or not data["Global Quote"]:
-        raise HTTPException(status_code=404, detail="Stock not found")
+    # 2. Cache expired or missing: Fetch Price
+    price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
+    price_res = requests.get(price_url).json()
     
-    quote = data["Global Quote"]
-    current_price = float(quote["05. price"])
+    if "Global Quote" not in price_res or not price_res["Global Quote"]:
+        raise HTTPException(status_code=404, detail="Stock price not found")
     
-    # Update or create stock data
+    current_price = float(price_res["Global Quote"]["05. price"])
+
+    # 3. Fetch Sector/Metadata (Alpha Vantage OVERVIEW)
+    # Note: Free tier has rate limits, so we only do this if sector is missing
+    sector = "Unknown"
+    if not stock or not stock.sector:
+        overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
+        overview_res = requests.get(overview_url).json()
+        sector = overview_res.get("Sector", "Unknown")
+
+    # 4. Update Database
     if stock:
         stock.current_price = current_price
+        if sector != "Unknown": stock.sector = sector
         stock.last_updated = datetime.now(timezone.utc)
     else:
         stock = models.StockData(
             ticker=ticker,
             current_price=current_price,
+            sector=sector,
             last_updated=datetime.now(timezone.utc)
         )
         db.add(stock)
@@ -209,6 +219,7 @@ def get_stock_data(ticker: str, db: Session = Depends(get_db)):
     return {
         "ticker": stock.ticker,
         "current_price": stock.current_price,
+        "sector": stock.sector,
         "cached": False
     }
 

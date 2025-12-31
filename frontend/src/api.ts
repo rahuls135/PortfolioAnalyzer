@@ -52,7 +52,7 @@ export interface HoldingCreate {
   avg_price: number;
 }
 
-export interface PortfolioHolding {
+export interface PortfolioHolding extends Holding {
   ticker: string;
   shares: number;
   avg_price: number;
@@ -87,8 +87,8 @@ export const api = {
   addHolding: (holdingData: HoldingCreate) => 
     apiClient.post<Holding>(`/api/holdings`, holdingData),
 
-  updateHolding: (id: number, data: { ticker: string; shares: number; avg_price: number }) => 
-    axios.patch(`/api/holdings/${id}`, data),
+  updateHolding: (holdingId: number, data: { ticker: string; shares: number; avg_price: number }) => 
+    apiClient.patch(`/api/holdings/${holdingId}`, data),
   
   getHoldings: () => 
     apiClient.get<Holding[]>(`/api/holdings`),

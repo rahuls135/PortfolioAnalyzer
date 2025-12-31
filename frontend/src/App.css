@@ -234,3 +234,69 @@ table td:last-child {
   text-align: center;
   width: 180px;
 }
+
+.portfolio-summary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  margin-bottom: 2rem;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2rem;
+}
+
+.summary-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.summary-label {
+  font-size: 0.875rem;
+  opacity: 0.9;
+  margin-bottom: 0.5rem;
+}
+
+.summary-value {
+  font-size: 2rem;
+  font-weight: bold;
+}
+
+.summary-value-small {
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-refresh {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.btn-refresh:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.loading {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.error {
+  color: #ef4444;
+}
+
+table td strong {
+  color: #667eea;
+  font-size: 1.1rem;
+}
