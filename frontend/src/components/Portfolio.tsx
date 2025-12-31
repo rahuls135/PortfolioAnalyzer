@@ -61,7 +61,7 @@ export default function Portfolio({ userId, onAnalyze }: PortfolioProps) {
           avg_price: newPrice
         });
       }
-
+      console.log("holding created!");
       await loadHoldings();
 
       // Clear input fields

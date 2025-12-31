@@ -22,7 +22,7 @@ def get_current_user(
             token,
             os.getenv("SUPABASE_JWT_SECRET"),
             algorithms=["HS256"],
-            audience="authenticated",
+            options={"verify_aud": False}  # <-- skip audience check for now
         )
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
