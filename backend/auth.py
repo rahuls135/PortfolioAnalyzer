@@ -1,9 +1,9 @@
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
-from sqlalchemy.orm import Session
+import jwt
+from jwt import PyJWKClient
 import os
-import requests
+from sqlalchemy.orm import Session
 
 from database import get_db
 import models
@@ -11,69 +11,39 @@ import models
 security = HTTPBearer()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-
-if not SUPABASE_URL:
-    raise RuntimeError("SUPABASE_URL not set")
-
 JWKS_URL = f"{SUPABASE_URL}/auth/v1/jwks"
 
+# Initialize the JWK Client once at the module level for caching
+jwks_client = PyJWKClient(JWKS_URL)
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ):
-    print("Authorization header:", credentials)
-
     token = credentials.credentials
 
     try:
-        # Get token header (to read `kid`)
-        print('before header')
-        header = jwt.get_unverified_header(token)
-        kid = header.get("kid")
-        if not kid:
-            raise HTTPException(status_code=401, detail="Invalid token header")
-        print('after header')
+        # 1. Get the correct signing key from the JWKS
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
 
-        # Fetch JWKS
-        print("fetching jwks")
-        jwks = requests.get(JWKS_URL).json()
-        keys = jwks.get("keys", [])
-        print("fetched jwks")
-
-        print("Token header:", jwt.get_unverified_header(token))
-        print("JWKS keys:", [k["kid"] for k in keys])
-
-        # Find matching key
-        print("before find key")
-        key = next((k for k in keys if k["kid"] == kid), None)
-        print("after find key")
-        if not key:
-            print("not key")
-            raise HTTPException(status_code=401, detail="Signing key not found")
-        
-        print("JWT length:", len(token))
-        print("JWT preview:", token[:20])
-
-        # Decode token (RS256)
+        # 2. Decode the payload
         payload = jwt.decode(
             token,
-            key,
-            algorithms=["RS256"],
-            options={"verify_aud": False},  # disable audience check for now
+            signing_key.key,
+            algorithms=["ES256"],
+            audience="authenticated",
         )
-        print("JWT payload:", payload)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {str(e)}")
 
-    except JWTError as e:
-        print("JWT decode error:", e)
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    # Extract Supabase user ID
+    # 3. Extract the Supabase UUID (the 'sub' claim)
     supabase_user_id = payload.get("sub")
     if not supabase_user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
+        raise HTTPException(status_code=401, detail="User ID missing from token")
 
-    # Load internal user
+    # 4. Fetch the actual user from your database
     user = (
         db.query(models.User)
         .filter(models.User.supabase_user_id == supabase_user_id)
@@ -81,6 +51,8 @@ def get_current_user(
     )
 
     if not user:
-        raise HTTPException(status_code=401, detail="User not registered")
+        # This happens if the user exists in Supabase but hasn't 
+        # been synced/created in your local database yet.
+        raise HTTPException(status_code=401, detail="User not found in local database")
 
     return user
