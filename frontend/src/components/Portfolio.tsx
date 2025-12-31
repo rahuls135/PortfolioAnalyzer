@@ -39,39 +39,27 @@ export default function Portfolio({ userId, onAnalyze }: PortfolioProps) {
     }
 
     try {
-      // Check if holding already exists
-      const existing = holdings.find(h => h.ticker === newTicker);
+      console.log("Sending holding to server...");
+      
+      // No more math here! Just send exactly what the user typed.
+      await api.addHolding({
+        ticker: newTicker,
+        shares: newShares,
+        avg_price: newPrice
+      });
 
-      if (existing) {
-        // Calculate new average price
-        const totalShares = existing.shares + newShares;
-        const updatedAvgPrice =
-          (existing.shares * existing.avg_price + newShares * newPrice) / totalShares;
-        console.log("updating holding...");
-        await api.updateHolding(userId, existing.id, {
-          shares: totalShares,
-          avg_price: updatedAvgPrice
-        });
-      } else {
-        // Create new holding
-        console.log("Create new holding...");
-        await api.addHolding({
-          ticker: newTicker,
-          shares: newShares,
-          avg_price: newPrice
-        });
-      }
-      console.log("holding created!");
+      console.log("Server processed the upsert!");
       await loadHoldings();
 
-      // Clear input fields
+      // Reset UI
       setTicker('');
       setShares('');
       setAvgPrice('');
+      alert('Portfolio updated!');
 
-      alert('Holding saved!');
     } catch (error) {
-      alert('Error saving holding: ' + (error as Error).message);
+      console.error("Failed to save:", error);
+      alert('Error: ' + (error as Error).message);
     }
   };
 

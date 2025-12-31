@@ -73,50 +73,49 @@ class HoldingUpdate(BaseModel):
     avg_price: Optional[float] = None
 
 
-# Create a holding
 @app.post("/api/holdings", response_model=HoldingResponse)
-def add_holding(
-    holding: HoldingCreate,
+def upsert_holding(
+    holding_in: HoldingCreate,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    db_holding = models.Holding(
+    ticker_upper = holding_in.ticker.upper()
+
+    # 1. Check if the user already owns this stock
+    existing_holding = db.query(models.Holding).filter(
+        models.Holding.user_id == current_user.id,
+        models.Holding.ticker == ticker_upper
+    ).first()
+
+    if existing_holding:
+        # 2. Update Logic: Calculate new Average Price
+        # Formula: (Old Total Cost + New Total Cost) / Total Shares
+        total_shares = existing_holding.shares + holding_in.shares
+        
+        old_cost = existing_holding.shares * existing_holding.avg_price
+        new_cost = holding_in.shares * holding_in.avg_price
+        
+        new_avg_price = (old_cost + new_cost) / total_shares
+
+        existing_holding.shares = total_shares
+        existing_holding.avg_price = new_avg_price
+        
+        db.commit()
+        db.refresh(existing_holding)
+        return existing_holding
+
+    # 3. Insert Logic: Create a brand new record
+    new_holding = models.Holding(
         user_id=current_user.id,
-        ticker=holding.ticker.upper(),
-        shares=holding.shares,
-        avg_price=holding.avg_price,
+        ticker=ticker_upper,
+        shares=holding_in.shares,
+        avg_price=holding_in.avg_price,
     )
 
-    db.add(db_holding)
+    db.add(new_holding)
     db.commit()
-    db.refresh(db_holding)
-
-    return db_holding
-
-@app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
-def update_holding(
-    holding_id: int, 
-    update: HoldingUpdate, 
-    current_user: models.User = Depends(get_current_user), # Use your auth!
-    db: Session = Depends(get_db)
-):
-    # Verify the holding exists AND belongs to THIS user
-    holding = db.query(models.Holding).filter(
-        models.Holding.id == holding_id,
-        models.Holding.user_id == current_user.id
-    ).first()
-    
-    if not holding:
-        raise HTTPException(status_code=404, detail="Holding not found")
-    
-    if update.shares is not None:
-        holding.shares = update.shares
-    if update.avg_price is not None:
-        holding.avg_price = update.avg_price
-    
-    db.commit()
-    db.refresh(holding)
-    return holding
+    db.refresh(new_holding)
+    return new_holding
 
 # Get all holdings for a user
 @app.get("/api/users/{user_id}/holdings", response_model=List[HoldingResponse])

@@ -8,9 +8,9 @@ export const apiClient = axios.create({
 });
 
 apiClient.interceptors.request.use(async (config) => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const { data: { session } } = await supabase.auth.getSession();
+
+  console.log("Interceptor running. Token:", session?.access_token);
 
   if (session?.access_token) {
     config.headers.Authorization = `Bearer ${session.access_token}`;
@@ -18,6 +18,7 @@ apiClient.interceptors.request.use(async (config) => {
 
   return config;
 });
+
 
 // Define types for your data
 export interface User {
@@ -85,9 +86,6 @@ export const api = {
   
   addHolding: (holdingData: HoldingCreate) => 
     apiClient.post<Holding>(`/api/holdings`, holdingData),
-  
-  updateHolding: (userId: number, holdingId: number, holdingData: Partial<HoldingCreate>) =>
-    apiClient.patch<Holding>(`/api/users/${userId}/holdings/${holdingId}`, holdingData),
   
   getHoldings: (userId: number) => 
     apiClient.get<Holding[]>(`/api/users/${userId}/holdings`),
