@@ -22,6 +22,8 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ):
+    print("Authorization header:", credentials)
+
     token = credentials.credentials
 
     try:
@@ -39,6 +41,9 @@ def get_current_user(
         key = next((k for k in keys if k["kid"] == kid), None)
         if not key:
             raise HTTPException(status_code=401, detail="Signing key not found")
+        
+        print("JWT length:", len(token))
+        print("JWT preview:", token[:20])
 
         # Decode token (RS256)
         payload = jwt.decode(
