@@ -242,7 +242,6 @@ function App() {
               </div>
               
               <div className="form-group">
-              <div className="form-group">
                 <label>Major Financial Obligations:</label>
                 <input
                   type="number"

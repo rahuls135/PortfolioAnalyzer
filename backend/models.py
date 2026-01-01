@@ -24,7 +24,7 @@ class UserProfile(Base):
     __tablename__ = "user_profiles"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
     recommended_equity_pct = Column(Float)
     recommended_allocation = Column(JSON)  # Store sector recommendations
     ai_analysis = Column(String)  # LLM-generated profile analysis
