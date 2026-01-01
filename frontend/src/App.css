@@ -6,12 +6,15 @@
 .App-header {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 2rem;
-  text-align: center;
+  padding: 1.5rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
 }
 
 .App-header h1 {
-  margin: 0 0 1rem 0;
+  margin: 0;
 }
 
 .App-header nav {
@@ -142,33 +145,152 @@ table th {
 .header-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 2rem;
-  flex-wrap: wrap;
-}
-
-.user-info {
-  display: flex;
-  align-items: center;
   gap: 1rem;
+  position: relative;
 }
 
-.user-info span {
-  font-size: 0.9rem;
-}
-
-.sign-out-btn {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid white;
+.profile-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 5px;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
   cursor: pointer;
   font-size: 0.9rem;
+  font-weight: 600;
 }
 
-.sign-out-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+.profile-menu-trigger:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.avatar-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  color: #5b46b2;
+  font-weight: 700;
+}
+
+.profile-menu-label {
+  letter-spacing: 0.2px;
+}
+
+.profile-caret {
+  transition: transform 0.2s ease;
+}
+
+.profile-caret.open {
+  transform: rotate(180deg);
+}
+
+.profile-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.75rem);
+  background: white;
+  color: #1f2937;
+  border-radius: 12px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.18);
+  min-width: 220px;
+  overflow: hidden;
+  z-index: 20;
+}
+
+.profile-menu-header {
+  padding: 0.9rem 1rem;
+  background: #f3f4f6;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.profile-email {
+  font-size: 0.85rem;
+  color: #4b5563;
+  word-break: break-all;
+}
+
+.profile-menu-item {
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: white;
+  cursor: pointer;
+  font-size: 0.95rem;
+  color: #111827;
+}
+
+.profile-menu-item:hover {
+  background: #f9fafb;
+}
+
+.profile-menu-item:disabled {
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 30;
+}
+
+.modal {
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem 1.75rem;
+  width: min(520px, 100%);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.2);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.modal-header h2 {
+  margin: 0;
+  color: #111827;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #6b7280;
+}
+
+.modal-close:hover {
+  color: #111827;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 720px) {
+  .App-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 /* Action buttons in table */

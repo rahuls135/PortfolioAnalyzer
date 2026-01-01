@@ -32,6 +32,12 @@ class UserCreate(BaseModel):
     risk_tolerance: str
     retirement_years: int
 
+class UserUpdate(BaseModel):
+    age: Optional[int] = None
+    income: Optional[float] = None
+    risk_tolerance: Optional[str] = None
+    retirement_years: Optional[int] = None
+
 class UserResponse(BaseModel):
     id: int
     supabase_user_id: str
@@ -475,6 +481,37 @@ def get_my_profile(
     """Fetch the logged-in user's profile and AI analysis."""
     profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
     
+    return {
+        "id": current_user.id,
+        "supabase_user_id": current_user.supabase_user_id,
+        "age": current_user.age,
+        "income": current_user.income,
+        "risk_tolerance": current_user.risk_tolerance,
+        "retirement_years": current_user.retirement_years,
+        "ai_analysis": profile.ai_analysis if profile else None
+    }
+
+@app.patch("/api/users/me", response_model=UserResponse)
+def update_my_profile(
+    update: UserUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    updates = update.dict(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No profile fields provided")
+
+    for field, value in updates.items():
+        setattr(current_user, field, value)
+
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
+    if profile:
+        profile.portfolio_analysis = None
+        profile.portfolio_analysis_at = None
+
+    db.commit()
+    db.refresh(current_user)
+
     return {
         "id": current_user.id,
         "supabase_user_id": current_user.supabase_user_id,

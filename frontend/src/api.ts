@@ -38,6 +38,13 @@ export interface UserCreate {
   retirement_years: number;
 }
 
+export interface UserUpdate {
+  age?: number;
+  income?: number;
+  risk_tolerance?: string;
+  retirement_years?: number;
+}
+
 export interface Holding {
   id: number;
   ticker: string;
@@ -88,6 +95,9 @@ export const api = {
   
   getProfile: () =>
     apiClient.get<User>(`/api/users/me`),
+
+  updateProfile: (userData: UserUpdate) =>
+    apiClient.patch<User>(`/api/users/me`, userData),
   
   addHolding: (holdingData: HoldingCreate) => 
     apiClient.post<Holding>(`/api/holdings`, holdingData),
