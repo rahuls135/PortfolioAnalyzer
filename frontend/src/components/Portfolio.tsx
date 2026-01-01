@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
-import type { PortfolioHolding, Holding } from '../api';
+import Analysis from './Analysis';
+import type { PortfolioHolding, Holding, PortfolioAnalysis } from '../api';
 
 interface HoldingWithPrice extends Holding {
   sector?: string; // Add this!
@@ -11,11 +12,7 @@ interface HoldingWithPrice extends Holding {
   price_loading?: boolean;
 }
 
-interface PortfolioProps {
-  onAnalyze: () => void;
-}
-
-export default function Portfolio({ onAnalyze }: PortfolioProps) {
+export default function Portfolio() {
   const [holdings, setHoldings] = useState<HoldingWithPrice[]>([]);
   const [ticker, setTicker] = useState('');
   const [shares, setShares] = useState('');
@@ -23,6 +20,13 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
   const [totalValue, setTotalValue] = useState<number>(0);
   const [totalGainLoss, setTotalGainLoss] = useState<number>(0);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [portfolioAnalysis, setPortfolioAnalysis] = useState<PortfolioAnalysis | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisStale, setAnalysisStale] = useState(false);
+  const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState(0);
+  const [nextAvailableAt, setNextAvailableAt] = useState<string | null>(null);
+  const [lastAnalysisAt, setLastAnalysisAt] = useState<string | null>(null);
   
   // Edit state
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -32,6 +36,22 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
   useEffect(() => {
     loadHoldings();
   }, []);
+
+  useEffect(() => {
+    if (!nextAvailableAt) {
+      return;
+    }
+
+    const updateRemaining = () => {
+      const next = new Date(nextAvailableAt).getTime();
+      const remaining = Math.max(0, Math.floor((next - Date.now()) / 1000));
+      setCooldownRemainingSeconds(remaining);
+    };
+
+    updateRemaining();
+    const timer = setInterval(updateRemaining, 60000);
+    return () => clearInterval(timer);
+  }, [nextAvailableAt]);
 
   const loadHoldings = async () => {
     try {
@@ -43,6 +63,7 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
       
       // Fetch prices for all holdings
       await loadPrices(baseHoldings);
+      setAnalysisError(null);
 
     } catch (error) {
       console.error('Error loading holdings:', error);
@@ -138,6 +159,7 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
       });
 
       await loadHoldings();
+      setAnalysisStale(true);
       
       setTicker('');
       setShares('');
@@ -179,6 +201,7 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
       });
 
       await loadHoldings();
+      setAnalysisStale(true);
       setEditingId(null);
       alert('Holding updated!');
     } catch (error) {
@@ -194,6 +217,7 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
     try {
       await api.deleteHolding(holdingId);
       await loadHoldings();
+      setAnalysisStale(true);
       alert('Holding deleted!');
     } catch (error) {
       alert('Error deleting holding: ' + (error as Error).message);
@@ -204,6 +228,36 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
     const baseHoldings = holdings.map(({ current_price, current_value, gain_loss, gain_loss_pct, price_loading, ...rest }) => rest);
     setHoldings(holdings.map(h => ({ ...h, price_loading: true })));
     await loadPrices(baseHoldings);
+  };
+
+  const handleRunAnalysis = async () => {
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+
+    try {
+      const response = await api.analyzePortfolio();
+      setPortfolioAnalysis(response.data);
+      setAnalysisStale(false);
+      setCooldownRemainingSeconds(response.data.analysis_meta.cooldown_remaining_seconds);
+      setNextAvailableAt(response.data.analysis_meta.next_available_at);
+      setLastAnalysisAt(response.data.analysis_meta.last_analysis_at);
+    } catch (error) {
+      setAnalysisError((error as Error).message || 'Failed to analyze portfolio.');
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const formatDuration = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (hours <= 0) {
+      return `${minutes}m`;
+    }
+    if (minutes <= 0) {
+      return `${hours}h`;
+    }
+    return `${hours}h ${minutes}m`;
   };
 
   return (
@@ -374,13 +428,35 @@ export default function Portfolio({ onAnalyze }: PortfolioProps) {
             </tbody>
           </table>
         )}
-        
-        {holdings.length > 0 && (
-          <button onClick={onAnalyze} className="btn-primary">
-            Analyze Portfolio
+
+        <div className="analysis-actions">
+          <button
+            onClick={handleRunAnalysis}
+            className="btn-primary"
+            disabled={holdings.length === 0 || analysisLoading || cooldownRemainingSeconds > 0}
+          >
+            {analysisLoading ? 'Analyzing...' : 'Run Analysis'}
           </button>
-        )}
+          {analysisError && <span className="error">{analysisError}</span>}
+          {analysisStale && portfolioAnalysis && (
+            <span className="warning">Holdings changed since the last analysis.</span>
+          )}
+          {lastAnalysisAt && (
+            <span className="muted">
+              Last analysis: {new Date(lastAnalysisAt).toLocaleString()}
+            </span>
+          )}
+          {cooldownRemainingSeconds > 0 && (
+            <span className="muted">
+              Next analysis available in {formatDuration(cooldownRemainingSeconds)}
+            </span>
+          )}
+        </div>
       </div>
+
+      {portfolioAnalysis && (
+        <Analysis portfolioAnalysis={portfolioAnalysis} />
+      )}
     </div>
   );
 }

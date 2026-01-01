@@ -71,6 +71,12 @@ export interface PortfolioAnalysis {
     risk_tolerance: string;
     retirement_years: number;
   };
+  analysis_meta: {
+    cached: boolean;
+    last_analysis_at: string | null;
+    next_available_at: string | null;
+    cooldown_remaining_seconds: number;
+  };
 }
 
 export const api = {

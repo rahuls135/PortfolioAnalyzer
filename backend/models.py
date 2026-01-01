@@ -25,6 +25,8 @@ class UserProfile(Base):
     recommended_equity_pct = Column(Float)
     recommended_allocation = Column(JSON)  # Store sector recommendations
     ai_analysis = Column(String)  # LLM-generated profile analysis
+    portfolio_analysis = Column(String)
+    portfolio_analysis_at = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     user = relationship("User", back_populates="profile")

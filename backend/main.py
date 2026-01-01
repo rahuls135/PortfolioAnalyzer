@@ -68,6 +68,7 @@ def health_check():
 MARKET_TZ = ZoneInfo("America/New_York")
 MARKET_OPEN = time(9, 30)
 MARKET_CLOSE = time(16, 0)
+ANALYSIS_COOLDOWN_SECONDS = 24 * 60 * 60
 
 def _last_market_close(now_et: datetime) -> datetime:
     if now_et.weekday() >= 5:
@@ -103,6 +104,25 @@ def _market_closed_cache_valid(last_updated_utc: datetime, now_utc: datetime) ->
     next_open = _next_market_open(now_et)
     last_et = last_updated_utc.astimezone(MARKET_TZ)
     return last_et >= last_close and now_et < next_open
+
+def _analysis_meta(profile: Optional[models.UserProfile], now_utc: datetime, cached: bool) -> dict:
+    last_at = None
+    next_at = None
+    remaining = 0
+
+    if profile and profile.portfolio_analysis_at:
+        last_at = profile.portfolio_analysis_at
+        if last_at.tzinfo is None:
+            last_at = last_at.replace(tzinfo=timezone.utc)
+        next_at = last_at + timedelta(seconds=ANALYSIS_COOLDOWN_SECONDS)
+        remaining = max(0, int((next_at - now_utc).total_seconds()))
+
+    return {
+        "cached": cached,
+        "last_analysis_at": last_at.isoformat() if last_at else None,
+        "next_available_at": next_at.isoformat() if next_at else None,
+        "cooldown_remaining_seconds": remaining
+    }
 
 @app.post("/api/holdings", response_model=HoldingResponse)
 def upsert_holding(
@@ -335,6 +355,9 @@ def analyze_portfolio(
     db: Session = Depends(get_db)
 ):
     """Perform portfolio math and AI analysis for the logged-in user."""
+    now_utc = datetime.now(timezone.utc)
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
+
     # 1. Fetch holdings for the user identified by JWT
     holdings = db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
     
@@ -347,7 +370,8 @@ def analyze_portfolio(
                 "age": current_user.age,
                 "risk_tolerance": current_user.risk_tolerance,
                 "retirement_years": current_user.retirement_years
-            }
+            },
+            "analysis_meta": _analysis_meta(profile, now_utc, cached=False)
         }
 
     portfolio_summary = []
@@ -399,8 +423,18 @@ def analyze_portfolio(
     else:
         diversification_note = "Your portfolio shows good sector diversification."
     
-    # Use current_user instead of 'user'
-    ai_analysis = f"""Portfolio Analysis Summary:
+    cached = False
+    if profile and profile.portfolio_analysis and profile.portfolio_analysis_at:
+        last_at = profile.portfolio_analysis_at
+        if last_at.tzinfo is None:
+            last_at = last_at.replace(tzinfo=timezone.utc)
+        if (now_utc - last_at).total_seconds() < ANALYSIS_COOLDOWN_SECONDS:
+            cached = True
+
+    if cached:
+        ai_analysis = profile.portfolio_analysis
+    else:
+        ai_analysis = f"""Portfolio Analysis Summary:
 
 Overall Assessment:
 {diversification_note}
@@ -414,6 +448,12 @@ Key Recommendations:
 3. Keep your long-term perspective with {current_user.retirement_years} years until retirement.
 
 Risk Assessment: Your {current_user.risk_tolerance} risk tolerance is {"well-suited" if current_user.retirement_years > 20 else "slightly aggressive"} for your timeline."""
+        if not profile:
+            profile = models.UserProfile(user_id=current_user.id)
+            db.add(profile)
+        profile.portfolio_analysis = ai_analysis
+        profile.portfolio_analysis_at = now_utc
+        db.commit()
     
     return {
         "total_value": total_value,
@@ -423,7 +463,8 @@ Risk Assessment: Your {current_user.risk_tolerance} risk tolerance is {"well-sui
             "age": current_user.age,
             "risk_tolerance": current_user.risk_tolerance,
             "retirement_years": current_user.retirement_years
-        }
+        },
+        "analysis_meta": _analysis_meta(profile, now_utc, cached=cached)
     }
 
 @app.get("/api/users/me", response_model=UserResponse)

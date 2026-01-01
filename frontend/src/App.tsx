@@ -5,18 +5,12 @@ import { supabase } from './supabase';
 import Auth from './Auth';
 import ProfileForm from './components/ProfileForm';
 import Portfolio from './components/Portfolio';
-import Analysis from './components/Analysis';
-import type { PortfolioAnalysis } from './api';
 import type { User } from '@supabase/supabase-js';
-
-type View = 'profile' | 'portfolio' | 'analysis';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<number | null>(null);
-  const [view, setView] = useState<View>('profile');
-  const [portfolioAnalysis, setPortfolioAnalysis] = useState<PortfolioAnalysis | null>(null);
 
   // Check for existing session and profile on mount
   useEffect(() => {
@@ -43,7 +37,6 @@ function App() {
         await checkExistingProfile();
       } else {
         setUserId(null);
-        setView('profile');
       }
     });
 
@@ -58,14 +51,12 @@ function App() {
       
       // User profile exists, go straight to portfolio
       setUserId(response.data.id);
-      setView('portfolio');
     } catch (error: any) {
       console.log('Profile check error:', error.response?.status, error.response?.data);
       
       // User profile doesn't exist, show profile creation form
       if (error.response?.status === 404) {
         console.log('No profile found, showing profile creation form');
-        setView('profile');
       }
     }
   };
@@ -73,23 +64,10 @@ function App() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setUserId(null);
-    setView('profile');
-    setPortfolioAnalysis(null);
   };
 
   const handleProfileCreated = (newUserId: number) => {
     setUserId(newUserId);
-    setView('portfolio');
-  };
-
-  const handleAnalyze = async () => {
-    try {
-      const response = await api.analyzePortfolio();
-      setPortfolioAnalysis(response.data);
-      setView('analysis');
-    } catch (error) {
-      alert('Error analyzing portfolio: ' + (error as Error).message);
-    }
   };
 
   if (loading) {
@@ -109,12 +87,6 @@ function App() {
       <header className="App-header">
         <h1>📊 AI Portfolio Analyzer</h1>
         <div className="header-actions">
-          {userId && (
-            <nav>
-              <button onClick={() => setView('portfolio')}>Portfolio</button>
-              <button onClick={() => setView('analysis')}>Analysis</button>
-            </nav>
-          )}
           <div className="user-info">
             <span>{user.email}</span>
             <button onClick={handleSignOut} className="sign-out-btn">
@@ -125,19 +97,12 @@ function App() {
       </header>
 
       <main className="container">
-        {!userId && view === 'profile' && (
+        {!userId && (
           <ProfileForm onProfileCreated={handleProfileCreated} />
         )}
 
-        {userId && view === 'portfolio' && (
-          <Portfolio 
-            userId={userId}
-            onAnalyze={handleAnalyze}
-          />
-        )}
-
-        {userId && view === 'analysis' && portfolioAnalysis && (
-          <Analysis portfolioAnalysis={portfolioAnalysis} />
+        {userId && (
+          <Portfolio />
         )}
       </main>
     </div>
