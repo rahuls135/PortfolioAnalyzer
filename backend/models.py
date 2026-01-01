@@ -13,6 +13,7 @@ class User(Base):
     risk_tolerance = Column(String)
     risk_assessment_mode = Column(String, default="manual")
     retirement_years = Column(Integer)
+    obligations_amount = Column(Float)
     obligations = Column(JSON, default=list)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     

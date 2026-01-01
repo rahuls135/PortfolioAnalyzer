@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api';
+import { computeRiskRecommendation } from '../utils/risk';
 
 interface ProfileFormProps {
   onProfileCreated: (userId: number) => void;
@@ -11,21 +12,27 @@ export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
   const [riskTolerance, setRiskTolerance] = useState('moderate');
   const [riskAssessmentMode, setRiskAssessmentMode] = useState<'manual' | 'ai'>('manual');
   const [retirementYears, setRetirementYears] = useState('');
-  const [obligations, setObligations] = useState<string[]>([]);
+  const [obligationsAmount, setObligationsAmount] = useState('');
 
-  const obligationOptions = [
-    'Student loans',
-    'Rent',
-    'Mortgage',
-    'Car payments'
-  ];
+  const handleAiRecommendation = () => {
+    const parsedAge = parseInt(age, 10);
+    const parsedIncome = parseFloat(income);
+    const parsedRetirementYears = parseInt(retirementYears, 10);
+    const parsedObligations = parseFloat(obligationsAmount || '0');
 
-  const toggleObligation = (value: string) => {
-    setObligations((prev) => (
-      prev.includes(value)
-        ? prev.filter((item) => item !== value)
-        : [...prev, value]
-    ));
+    if (Number.isNaN(parsedAge) || Number.isNaN(parsedIncome) || Number.isNaN(parsedRetirementYears)) {
+      alert('Enter age, income, and retirement years to get an AI recommendation.');
+      return;
+    }
+
+    const recommendation = computeRiskRecommendation({
+      age: parsedAge,
+      income: parsedIncome,
+      retirementYears: parsedRetirementYears,
+      obligationsAmount: Number.isNaN(parsedObligations) ? 0 : parsedObligations
+    });
+    setRiskTolerance(recommendation);
+    setRiskAssessmentMode('ai');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -36,7 +43,7 @@ export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
         age: parseInt(age),
         income: parseFloat(income),
         retirement_years: parseInt(retirementYears),
-        obligations,
+        obligations_amount: obligationsAmount ? parseFloat(obligationsAmount) : undefined,
         risk_assessment_mode: riskAssessmentMode
       } as const;
 
@@ -77,61 +84,29 @@ export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
         </div>
         
         <div className="form-group">
-          <label>Risk Assessment:</label>
-          <div className="radio-group">
-            <label>
-              <input
-                type="radio"
-                name="risk-assessment"
-                value="manual"
-                checked={riskAssessmentMode === 'manual'}
-                onChange={() => setRiskAssessmentMode('manual')}
-              />
-              Manual
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="risk-assessment"
-                value="ai"
-                checked={riskAssessmentMode === 'ai'}
-                onChange={() => setRiskAssessmentMode('ai')}
-              />
-              AI Recommended
-            </label>
-          </div>
-        </div>
-
-        <div className="form-group">
           <label>Risk Tolerance:</label>
           <select
             value={riskTolerance}
-            onChange={(e) => setRiskTolerance(e.target.value)}
-            disabled={riskAssessmentMode === 'ai'}
+            onChange={(e) => {
+              setRiskTolerance(e.target.value);
+              setRiskAssessmentMode('manual');
+            }}
           >
             <option value="conservative">Conservative</option>
             <option value="moderate">Moderate</option>
             <option value="aggressive">Aggressive</option>
           </select>
-          {riskAssessmentMode === 'ai' && (
-            <span className="muted">We will recommend a risk level based on your profile.</span>
-          )}
         </div>
 
         <div className="form-group">
           <label>Major Financial Obligations:</label>
-          <div className="checkbox-group">
-            {obligationOptions.map((option) => (
-              <label key={option}>
-                <input
-                  type="checkbox"
-                  checked={obligations.includes(option)}
-                  onChange={() => toggleObligation(option)}
-                />
-                {option}
-              </label>
-            ))}
-          </div>
+          <input
+            type="number"
+            placeholder="Monthly total (rent, mortgage, loans, car payments)"
+            value={obligationsAmount}
+            onChange={(e) => setObligationsAmount(e.target.value)}
+          />
+          <span className="muted">Include recurring payments like rent, mortgage, loans, or car.</span>
         </div>
         
         <div className="form-group">
@@ -147,6 +122,14 @@ export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
         <button type="submit" className="btn-primary">
           Create Profile
         </button>
+        <div className="risk-mode-bar">
+          <button type="button" className="btn-secondary" onClick={handleAiRecommendation}>
+            Use AI Recommendation
+          </button>
+          <span className="muted">
+            Mode: {riskAssessmentMode === 'ai' ? 'AI recommended' : 'Manual'}
+          </span>
+        </div>
       </form>
     </div>
   );

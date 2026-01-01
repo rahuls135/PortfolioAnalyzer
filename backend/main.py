@@ -32,7 +32,7 @@ class UserCreate(BaseModel):
     risk_tolerance: Optional[str] = None
     risk_assessment_mode: str = "manual"
     retirement_years: int
-    obligations: Optional[List[str]] = None
+    obligations_amount: Optional[float] = None
 
 class UserUpdate(BaseModel):
     age: Optional[int] = None
@@ -40,7 +40,7 @@ class UserUpdate(BaseModel):
     risk_tolerance: Optional[str] = None
     risk_assessment_mode: Optional[str] = None
     retirement_years: Optional[int] = None
-    obligations: Optional[List[str]] = None
+    obligations_amount: Optional[float] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -50,7 +50,7 @@ class UserResponse(BaseModel):
     risk_tolerance: str
     risk_assessment_mode: str
     retirement_years: int
-    obligations: Optional[List[str]] = None
+    obligations_amount: Optional[float] = None
     ai_analysis: Optional[str] = None
     
     class Config:
@@ -136,17 +136,12 @@ def _analysis_meta(profile: Optional[models.UserProfile], now_utc: datetime, cac
         "cooldown_remaining_seconds": remaining
     }
 
-def _normalize_obligations(obligations: Optional[List[str]]) -> List[str]:
-    if not obligations:
-        return []
-    cleaned = [o.strip() for o in obligations if o and o.strip()]
-    return sorted(set(cleaned))
-
-def _compute_risk_tolerance(age: int, income: float, retirement_years: int, obligations: List[str]) -> str:
-    obligation_count = len(obligations)
-    if retirement_years <= 10 or age >= 55 or obligation_count >= 2:
+def _compute_risk_tolerance(age: int, income: float, retirement_years: int, obligations_amount: float) -> str:
+    high_obligations = obligations_amount >= 2500
+    low_obligations = obligations_amount <= 1000
+    if retirement_years <= 10 or age >= 55 or high_obligations:
         return "conservative"
-    if retirement_years >= 25 and income >= 100000 and obligation_count <= 1:
+    if retirement_years >= 25 and income >= 100000 and low_obligations:
         return "aggressive"
     return "moderate"
 
@@ -330,7 +325,7 @@ def create_user_profile(
     if existing_user:
         raise HTTPException(status_code=400, detail="User profile already exists")
     
-    obligations = _normalize_obligations(user.obligations)
+    obligations_amount = float(user.obligations_amount or 0)
     risk_mode = user.risk_assessment_mode or "manual"
     if risk_mode not in {"manual", "ai"}:
         raise HTTPException(status_code=400, detail="Invalid risk assessment mode")
@@ -340,7 +335,7 @@ def create_user_profile(
             age=user.age,
             income=user.income,
             retirement_years=user.retirement_years,
-            obligations=obligations
+            obligations_amount=obligations_amount
         )
     else:
         if not user.risk_tolerance:
@@ -355,14 +350,14 @@ def create_user_profile(
         risk_tolerance=risk_tolerance,
         risk_assessment_mode=risk_mode,
         retirement_years=user.retirement_years,
-        obligations=obligations
+        obligations_amount=obligations_amount
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     
     # Mock AI analysis
-    obligations_text = ", ".join(obligations) if obligations else "no major obligations reported"
+    obligations_text = f"monthly obligations around ${obligations_amount:,.0f}" if obligations_amount else "no major obligations reported"
     ai_analysis = f"""Based on your profile (age {user.age}, {user.retirement_years} years to retirement, {risk_tolerance} risk tolerance, {obligations_text}):
 
 Recommended Allocation:
@@ -393,7 +388,7 @@ Focus sectors: Technology, Healthcare, Consumer Discretionary, Financials"""
         "risk_tolerance": db_user.risk_tolerance,
         "risk_assessment_mode": db_user.risk_assessment_mode,
         "retirement_years": db_user.retirement_years,
-        "obligations": db_user.obligations or [],
+        "obligations_amount": db_user.obligations_amount,
         "ai_analysis": ai_analysis
     }
 
@@ -420,7 +415,7 @@ def analyze_portfolio(
                 "risk_tolerance": current_user.risk_tolerance,
                 "risk_assessment_mode": risk_mode,
                 "retirement_years": current_user.retirement_years,
-                "obligations": current_user.obligations or []
+                "obligations_amount": current_user.obligations_amount
             },
             "analysis_meta": _analysis_meta(profile, now_utc, cached=False)
         }
@@ -485,7 +480,8 @@ def analyze_portfolio(
     if cached:
         ai_analysis = profile.portfolio_analysis
     else:
-        obligations_text = ", ".join(current_user.obligations or []) if current_user.obligations else "no major obligations reported"
+        obligations_amount = current_user.obligations_amount or 0
+        obligations_text = f"monthly obligations around ${obligations_amount:,.0f}" if obligations_amount else "no major obligations reported"
         ai_analysis = f"""Portfolio Analysis Summary:
 
 Overall Assessment:
@@ -516,7 +512,7 @@ Risk Assessment: Your {current_user.risk_tolerance} risk tolerance ({risk_mode} 
             "risk_tolerance": current_user.risk_tolerance,
             "risk_assessment_mode": risk_mode,
             "retirement_years": current_user.retirement_years,
-            "obligations": current_user.obligations or []
+            "obligations_amount": current_user.obligations_amount
         },
         "analysis_meta": _analysis_meta(profile, now_utc, cached=cached)
     }
@@ -537,7 +533,7 @@ def get_my_profile(
         "risk_tolerance": current_user.risk_tolerance,
         "risk_assessment_mode": current_user.risk_assessment_mode or "manual",
         "retirement_years": current_user.retirement_years,
-        "obligations": current_user.obligations or [],
+        "obligations_amount": current_user.obligations_amount,
         "ai_analysis": profile.ai_analysis if profile else None
     }
 
@@ -551,9 +547,6 @@ def update_my_profile(
     if not updates:
         raise HTTPException(status_code=400, detail="No profile fields provided")
 
-    if "obligations" in updates:
-        updates["obligations"] = _normalize_obligations(updates["obligations"])
-
     if "risk_assessment_mode" in updates:
         if updates["risk_assessment_mode"] not in {"manual", "ai"}:
             raise HTTPException(status_code=400, detail="Invalid risk assessment mode")
@@ -566,7 +559,7 @@ def update_my_profile(
             age=current_user.age,
             income=current_user.income,
             retirement_years=current_user.retirement_years,
-            obligations=current_user.obligations or []
+            obligations_amount=float(current_user.obligations_amount or 0)
         )
 
     profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
@@ -585,6 +578,6 @@ def update_my_profile(
         "risk_tolerance": current_user.risk_tolerance,
         "risk_assessment_mode": current_user.risk_assessment_mode or "manual",
         "retirement_years": current_user.retirement_years,
-        "obligations": current_user.obligations or [],
+        "obligations_amount": current_user.obligations_amount,
         "ai_analysis": profile.ai_analysis if profile else None
     }

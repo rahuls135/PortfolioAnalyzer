@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { api, type User as ApiUser } from './api';
+import { computeRiskRecommendation } from './utils/risk';
 import { supabase } from './supabase';
 import Auth from './Auth';
 import ProfileForm from './components/ProfileForm';
@@ -19,16 +20,10 @@ function App() {
   const [settingsRiskTolerance, setSettingsRiskTolerance] = useState('moderate');
   const [settingsRiskAssessmentMode, setSettingsRiskAssessmentMode] = useState<'manual' | 'ai'>('manual');
   const [settingsRetirementYears, setSettingsRetirementYears] = useState('');
-  const [settingsObligations, setSettingsObligations] = useState<string[]>([]);
+  const [settingsObligationsAmount, setSettingsObligationsAmount] = useState('');
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
-  const obligationOptions = [
-    'Student loans',
-    'Rent',
-    'Mortgage',
-    'Car payments'
-  ];
 
   // Check for existing session and profile on mount
   useEffect(() => {
@@ -102,7 +97,11 @@ function App() {
     setSettingsRiskTolerance(profile.risk_tolerance);
     setSettingsRiskAssessmentMode((profile.risk_assessment_mode as 'manual' | 'ai') || 'manual');
     setSettingsRetirementYears(profile.retirement_years.toString());
-    setSettingsObligations(profile.obligations ?? []);
+    setSettingsObligationsAmount(
+      profile.obligations_amount !== undefined && profile.obligations_amount !== null
+        ? profile.obligations_amount.toString()
+        : ''
+    );
     setSettingsError(null);
     setSettingsOpen(true);
     setProfileMenuOpen(false);
@@ -117,6 +116,7 @@ function App() {
     const age = parseInt(settingsAge, 10);
     const income = parseFloat(settingsIncome);
     const retirementYears = parseInt(settingsRetirementYears, 10);
+    const obligationsAmount = settingsObligationsAmount ? parseFloat(settingsObligationsAmount) : undefined;
 
     if (Number.isNaN(age) || Number.isNaN(income) || Number.isNaN(retirementYears)) {
       setSettingsError('Please enter valid numbers for all fields.');
@@ -130,7 +130,7 @@ function App() {
         age,
         income,
         retirement_years: retirementYears,
-        obligations: settingsObligations,
+        obligations_amount: Number.isNaN(obligationsAmount ?? 0) ? undefined : obligationsAmount,
         risk_assessment_mode: settingsRiskAssessmentMode,
         risk_tolerance: settingsRiskAssessmentMode === 'manual' ? settingsRiskTolerance : undefined
       });
@@ -242,67 +242,30 @@ function App() {
               </div>
               
               <div className="form-group">
-                <label>Risk Assessment:</label>
-                <div className="radio-group">
-                  <label>
-                    <input
-                      type="radio"
-                      name="settings-risk-assessment"
-                      value="manual"
-                      checked={settingsRiskAssessmentMode === 'manual'}
-                      onChange={() => setSettingsRiskAssessmentMode('manual')}
-                    />
-                    Manual
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="settings-risk-assessment"
-                      value="ai"
-                      checked={settingsRiskAssessmentMode === 'ai'}
-                      onChange={() => setSettingsRiskAssessmentMode('ai')}
-                    />
-                    AI Recommended
-                  </label>
-                </div>
+              <div className="form-group">
+                <label>Major Financial Obligations:</label>
+                <input
+                  type="number"
+                  placeholder="Monthly total (rent, mortgage, loans, car payments)"
+                  value={settingsObligationsAmount}
+                  onChange={(e) => setSettingsObligationsAmount(e.target.value)}
+                />
+                <span className="muted">Include recurring payments like rent, mortgage, loans, or car.</span>
               </div>
 
               <div className="form-group">
                 <label>Risk Tolerance:</label>
                 <select
                   value={settingsRiskTolerance}
-                  onChange={(e) => setSettingsRiskTolerance(e.target.value)}
-                  disabled={settingsRiskAssessmentMode === 'ai'}
+                  onChange={(e) => {
+                    setSettingsRiskTolerance(e.target.value);
+                    setSettingsRiskAssessmentMode('manual');
+                  }}
                 >
                   <option value="conservative">Conservative</option>
                   <option value="moderate">Moderate</option>
                   <option value="aggressive">Aggressive</option>
                 </select>
-                {settingsRiskAssessmentMode === 'ai' && (
-                  <span className="muted">We will recommend a risk level based on your profile.</span>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label>Major Financial Obligations:</label>
-                <div className="checkbox-group">
-                  {obligationOptions.map((option) => (
-                    <label key={option}>
-                      <input
-                        type="checkbox"
-                        checked={settingsObligations.includes(option)}
-                        onChange={() => {
-                          setSettingsObligations((prev) => (
-                            prev.includes(option)
-                              ? prev.filter((item) => item !== option)
-                              : [...prev, option]
-                          ));
-                        }}
-                      />
-                      {option}
-                    </label>
-                  ))}
-                </div>
               </div>
               
               <div className="form-group">
@@ -315,6 +278,42 @@ function App() {
                 />
               </div>
               {settingsError && <div className="error">{settingsError}</div>}
+              <div className="risk-mode-bar">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    const parsedAge = parseInt(settingsAge, 10);
+                    const parsedIncome = parseFloat(settingsIncome);
+                    const parsedRetirementYears = parseInt(settingsRetirementYears, 10);
+                    const parsedObligations = parseFloat(settingsObligationsAmount || '0');
+
+                    if (
+                      Number.isNaN(parsedAge)
+                      || Number.isNaN(parsedIncome)
+                      || Number.isNaN(parsedRetirementYears)
+                    ) {
+                      setSettingsError('Enter age, income, and retirement years to get an AI recommendation.');
+                      return;
+                    }
+
+                    const recommendation = computeRiskRecommendation({
+                      age: parsedAge,
+                      income: parsedIncome,
+                      retirementYears: parsedRetirementYears,
+                      obligationsAmount: Number.isNaN(parsedObligations) ? 0 : parsedObligations
+                    });
+                    setSettingsRiskTolerance(recommendation);
+                    setSettingsRiskAssessmentMode('ai');
+                  }}
+                >
+                  Use AI Recommendation
+                </button>
+                <span className="muted">
+                  Mode: {settingsRiskAssessmentMode === 'ai' ? 'AI recommended' : 'Manual'}
+                </span>
+              </div>
+
               <div className="modal-actions">
                 <button type="button" className="btn-cancel" onClick={closeSettings}>
                   Cancel
