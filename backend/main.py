@@ -29,14 +29,18 @@ app.add_middleware(
 class UserCreate(BaseModel):
     age: int
     income: float
-    risk_tolerance: str
+    risk_tolerance: Optional[str] = None
+    risk_assessment_mode: str = "manual"
     retirement_years: int
+    obligations: Optional[List[str]] = None
 
 class UserUpdate(BaseModel):
     age: Optional[int] = None
     income: Optional[float] = None
     risk_tolerance: Optional[str] = None
+    risk_assessment_mode: Optional[str] = None
     retirement_years: Optional[int] = None
+    obligations: Optional[List[str]] = None
 
 class UserResponse(BaseModel):
     id: int
@@ -44,7 +48,9 @@ class UserResponse(BaseModel):
     age: int
     income: float
     risk_tolerance: str
+    risk_assessment_mode: str
     retirement_years: int
+    obligations: Optional[List[str]] = None
     ai_analysis: Optional[str] = None
     
     class Config:
@@ -129,6 +135,20 @@ def _analysis_meta(profile: Optional[models.UserProfile], now_utc: datetime, cac
         "next_available_at": next_at.isoformat() if next_at else None,
         "cooldown_remaining_seconds": remaining
     }
+
+def _normalize_obligations(obligations: Optional[List[str]]) -> List[str]:
+    if not obligations:
+        return []
+    cleaned = [o.strip() for o in obligations if o and o.strip()]
+    return sorted(set(cleaned))
+
+def _compute_risk_tolerance(age: int, income: float, retirement_years: int, obligations: List[str]) -> str:
+    obligation_count = len(obligations)
+    if retirement_years <= 10 or age >= 55 or obligation_count >= 2:
+        return "conservative"
+    if retirement_years >= 25 and income >= 100000 and obligation_count <= 1:
+        return "aggressive"
+    return "moderate"
 
 @app.post("/api/holdings", response_model=HoldingResponse)
 def upsert_holding(
@@ -310,20 +330,40 @@ def create_user_profile(
     if existing_user:
         raise HTTPException(status_code=400, detail="User profile already exists")
     
+    obligations = _normalize_obligations(user.obligations)
+    risk_mode = user.risk_assessment_mode or "manual"
+    if risk_mode not in {"manual", "ai"}:
+        raise HTTPException(status_code=400, detail="Invalid risk assessment mode")
+
+    if risk_mode == "ai":
+        risk_tolerance = _compute_risk_tolerance(
+            age=user.age,
+            income=user.income,
+            retirement_years=user.retirement_years,
+            obligations=obligations
+        )
+    else:
+        if not user.risk_tolerance:
+            raise HTTPException(status_code=400, detail="Risk tolerance is required for manual mode")
+        risk_tolerance = user.risk_tolerance
+
     # Create user
     db_user = models.User(
         supabase_user_id=supabase_user_id,
         age=user.age,
         income=user.income,
-        risk_tolerance=user.risk_tolerance,
-        retirement_years=user.retirement_years
+        risk_tolerance=risk_tolerance,
+        risk_assessment_mode=risk_mode,
+        retirement_years=user.retirement_years,
+        obligations=obligations
     )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     
     # Mock AI analysis
-    ai_analysis = f"""Based on your profile (age {user.age}, {user.retirement_years} years to retirement, {user.risk_tolerance} risk tolerance):
+    obligations_text = ", ".join(obligations) if obligations else "no major obligations reported"
+    ai_analysis = f"""Based on your profile (age {user.age}, {user.retirement_years} years to retirement, {risk_tolerance} risk tolerance, {obligations_text}):
 
 Recommended Allocation:
 - Equities: 80%
@@ -332,7 +372,7 @@ Recommended Allocation:
 
 Key Recommendations:
 1. With {user.retirement_years} years until retirement, you have time to ride out market volatility
-2. Your {user.risk_tolerance} risk tolerance aligns well with a growth-oriented portfolio
+2. Your {risk_tolerance} risk tolerance aligns with your timeline and obligations
 3. Consider diversifying across large-cap, mid-cap, and international stocks
 4. Begin gradually increasing bond allocation as you approach retirement
 
@@ -351,7 +391,9 @@ Focus sectors: Technology, Healthcare, Consumer Discretionary, Financials"""
         "age": db_user.age,
         "income": db_user.income,
         "risk_tolerance": db_user.risk_tolerance,
+        "risk_assessment_mode": db_user.risk_assessment_mode,
         "retirement_years": db_user.retirement_years,
+        "obligations": db_user.obligations or [],
         "ai_analysis": ai_analysis
     }
 
@@ -363,6 +405,7 @@ def analyze_portfolio(
     """Perform portfolio math and AI analysis for the logged-in user."""
     now_utc = datetime.now(timezone.utc)
     profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
+    risk_mode = current_user.risk_assessment_mode or "manual"
 
     # 1. Fetch holdings for the user identified by JWT
     holdings = db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
@@ -375,7 +418,9 @@ def analyze_portfolio(
             "user_profile": {
                 "age": current_user.age,
                 "risk_tolerance": current_user.risk_tolerance,
-                "retirement_years": current_user.retirement_years
+                "risk_assessment_mode": risk_mode,
+                "retirement_years": current_user.retirement_years,
+                "obligations": current_user.obligations or []
             },
             "analysis_meta": _analysis_meta(profile, now_utc, cached=False)
         }
@@ -440,6 +485,7 @@ def analyze_portfolio(
     if cached:
         ai_analysis = profile.portfolio_analysis
     else:
+        obligations_text = ", ".join(current_user.obligations or []) if current_user.obligations else "no major obligations reported"
         ai_analysis = f"""Portfolio Analysis Summary:
 
 Overall Assessment:
@@ -451,9 +497,9 @@ Holdings Breakdown:
 Key Recommendations:
 1. Review your positions regularly to maintain target allocation.
 2. Consider tax-loss harvesting on underperforming positions.
-3. Keep your long-term perspective with {current_user.retirement_years} years until retirement.
+3. Keep your long-term perspective with {current_user.retirement_years} years until retirement and {obligations_text}.
 
-Risk Assessment: Your {current_user.risk_tolerance} risk tolerance is {"well-suited" if current_user.retirement_years > 20 else "slightly aggressive"} for your timeline."""
+Risk Assessment: Your {current_user.risk_tolerance} risk tolerance ({risk_mode} assessment) is {"well-suited" if current_user.retirement_years > 20 else "slightly aggressive"} for your timeline."""
         if not profile:
             profile = models.UserProfile(user_id=current_user.id)
             db.add(profile)
@@ -468,7 +514,9 @@ Risk Assessment: Your {current_user.risk_tolerance} risk tolerance is {"well-sui
         "user_profile": {
             "age": current_user.age,
             "risk_tolerance": current_user.risk_tolerance,
-            "retirement_years": current_user.retirement_years
+            "risk_assessment_mode": risk_mode,
+            "retirement_years": current_user.retirement_years,
+            "obligations": current_user.obligations or []
         },
         "analysis_meta": _analysis_meta(profile, now_utc, cached=cached)
     }
@@ -487,7 +535,9 @@ def get_my_profile(
         "age": current_user.age,
         "income": current_user.income,
         "risk_tolerance": current_user.risk_tolerance,
+        "risk_assessment_mode": current_user.risk_assessment_mode or "manual",
         "retirement_years": current_user.retirement_years,
+        "obligations": current_user.obligations or [],
         "ai_analysis": profile.ai_analysis if profile else None
     }
 
@@ -501,8 +551,23 @@ def update_my_profile(
     if not updates:
         raise HTTPException(status_code=400, detail="No profile fields provided")
 
+    if "obligations" in updates:
+        updates["obligations"] = _normalize_obligations(updates["obligations"])
+
+    if "risk_assessment_mode" in updates:
+        if updates["risk_assessment_mode"] not in {"manual", "ai"}:
+            raise HTTPException(status_code=400, detail="Invalid risk assessment mode")
+
     for field, value in updates.items():
         setattr(current_user, field, value)
+
+    if current_user.risk_assessment_mode == "ai":
+        current_user.risk_tolerance = _compute_risk_tolerance(
+            age=current_user.age,
+            income=current_user.income,
+            retirement_years=current_user.retirement_years,
+            obligations=current_user.obligations or []
+        )
 
     profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
     if profile:
@@ -518,6 +583,8 @@ def update_my_profile(
         "age": current_user.age,
         "income": current_user.income,
         "risk_tolerance": current_user.risk_tolerance,
+        "risk_assessment_mode": current_user.risk_assessment_mode or "manual",
         "retirement_years": current_user.retirement_years,
+        "obligations": current_user.obligations or [],
         "ai_analysis": profile.ai_analysis if profile else None
     }

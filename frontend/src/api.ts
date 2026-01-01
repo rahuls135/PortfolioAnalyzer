@@ -27,22 +27,28 @@ export interface User {
   age: number;
   income: number;
   risk_tolerance: string;
+  risk_assessment_mode: string;
   retirement_years: number;
+  obligations?: string[];
   ai_analysis?: string;
 }
 
 export interface UserCreate {
   age: number;
   income: number;
-  risk_tolerance: string;
+  risk_tolerance?: string;
+  risk_assessment_mode?: string;
   retirement_years: number;
+  obligations?: string[];
 }
 
 export interface UserUpdate {
   age?: number;
   income?: number;
   risk_tolerance?: string;
+  risk_assessment_mode?: string;
   retirement_years?: number;
+  obligations?: string[];
 }
 
 export interface Holding {
@@ -76,7 +82,9 @@ export interface PortfolioAnalysis {
   user_profile: {
     age: number;
     risk_tolerance: string;
+    risk_assessment_mode?: string;
     retirement_years: number;
+    obligations?: string[];
   };
   analysis_meta: {
     cached: boolean;

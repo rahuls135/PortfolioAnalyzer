@@ -11,7 +11,9 @@ class User(Base):
     age = Column(Integer)
     income = Column(Float)
     risk_tolerance = Column(String)
+    risk_assessment_mode = Column(String, default="manual")
     retirement_years = Column(Integer)
+    obligations = Column(JSON, default=list)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     holdings = relationship("Holding", back_populates="user")

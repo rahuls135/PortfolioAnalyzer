@@ -17,10 +17,18 @@ function App() {
   const [settingsAge, setSettingsAge] = useState('');
   const [settingsIncome, setSettingsIncome] = useState('');
   const [settingsRiskTolerance, setSettingsRiskTolerance] = useState('moderate');
+  const [settingsRiskAssessmentMode, setSettingsRiskAssessmentMode] = useState<'manual' | 'ai'>('manual');
   const [settingsRetirementYears, setSettingsRetirementYears] = useState('');
+  const [settingsObligations, setSettingsObligations] = useState<string[]>([]);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const obligationOptions = [
+    'Student loans',
+    'Rent',
+    'Mortgage',
+    'Car payments'
+  ];
 
   // Check for existing session and profile on mount
   useEffect(() => {
@@ -92,7 +100,9 @@ function App() {
     setSettingsAge(profile.age.toString());
     setSettingsIncome(profile.income.toString());
     setSettingsRiskTolerance(profile.risk_tolerance);
+    setSettingsRiskAssessmentMode((profile.risk_assessment_mode as 'manual' | 'ai') || 'manual');
     setSettingsRetirementYears(profile.retirement_years.toString());
+    setSettingsObligations(profile.obligations ?? []);
     setSettingsError(null);
     setSettingsOpen(true);
     setProfileMenuOpen(false);
@@ -119,8 +129,10 @@ function App() {
       const response = await api.updateProfile({
         age,
         income,
-        risk_tolerance: settingsRiskTolerance,
-        retirement_years: retirementYears
+        retirement_years: retirementYears,
+        obligations: settingsObligations,
+        risk_assessment_mode: settingsRiskAssessmentMode,
+        risk_tolerance: settingsRiskAssessmentMode === 'manual' ? settingsRiskTolerance : undefined
       });
       setProfile(response.data);
       setSettingsOpen(false);
@@ -230,15 +242,67 @@ function App() {
               </div>
               
               <div className="form-group">
+                <label>Risk Assessment:</label>
+                <div className="radio-group">
+                  <label>
+                    <input
+                      type="radio"
+                      name="settings-risk-assessment"
+                      value="manual"
+                      checked={settingsRiskAssessmentMode === 'manual'}
+                      onChange={() => setSettingsRiskAssessmentMode('manual')}
+                    />
+                    Manual
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="settings-risk-assessment"
+                      value="ai"
+                      checked={settingsRiskAssessmentMode === 'ai'}
+                      onChange={() => setSettingsRiskAssessmentMode('ai')}
+                    />
+                    AI Recommended
+                  </label>
+                </div>
+              </div>
+
+              <div className="form-group">
                 <label>Risk Tolerance:</label>
                 <select
                   value={settingsRiskTolerance}
                   onChange={(e) => setSettingsRiskTolerance(e.target.value)}
+                  disabled={settingsRiskAssessmentMode === 'ai'}
                 >
                   <option value="conservative">Conservative</option>
                   <option value="moderate">Moderate</option>
                   <option value="aggressive">Aggressive</option>
                 </select>
+                {settingsRiskAssessmentMode === 'ai' && (
+                  <span className="muted">We will recommend a risk level based on your profile.</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label>Major Financial Obligations:</label>
+                <div className="checkbox-group">
+                  {obligationOptions.map((option) => (
+                    <label key={option}>
+                      <input
+                        type="checkbox"
+                        checked={settingsObligations.includes(option)}
+                        onChange={() => {
+                          setSettingsObligations((prev) => (
+                            prev.includes(option)
+                              ? prev.filter((item) => item !== option)
+                              : [...prev, option]
+                          ));
+                        }}
+                      />
+                      {option}
+                    </label>
+                  ))}
+                </div>
               </div>
               
               <div className="form-group">

@@ -19,7 +19,6 @@ export default function Portfolio() {
   const [avgPrice, setAvgPrice] = useState('');
   const [totalValue, setTotalValue] = useState<number>(0);
   const [totalGainLoss, setTotalGainLoss] = useState<number>(0);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [portfolioAnalysis, setPortfolioAnalysis] = useState<PortfolioAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -27,6 +26,7 @@ export default function Portfolio() {
   const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState(0);
   const [nextAvailableAt, setNextAvailableAt] = useState<string | null>(null);
   const [lastAnalysisAt, setLastAnalysisAt] = useState<string | null>(null);
+  const [pricesCached, setPricesCached] = useState(false);
   
   // Edit state
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -34,7 +34,13 @@ export default function Portfolio() {
   const [editAvgPrice, setEditAvgPrice] = useState('');
 
   useEffect(() => {
-    loadHoldings();
+    const init = async () => {
+      const baseHoldings = await loadHoldings();
+      if (baseHoldings.length > 0) {
+        await loadAnalysis();
+      }
+    };
+    init();
   }, []);
 
   useEffect(() => {
@@ -64,9 +70,11 @@ export default function Portfolio() {
       // Fetch prices for all holdings
       await loadPrices(baseHoldings);
       setAnalysisError(null);
+      return baseHoldings;
 
     } catch (error) {
       console.error('Error loading holdings:', error);
+      return [];
     }
   };
 
@@ -88,6 +96,8 @@ export default function Portfolio() {
       );
 
       const priceResults = await Promise.all(pricePromises);
+      const allCached = priceResults.length > 0 && priceResults.every(result => result.cached);
+      setPricesCached(allCached);
 
       // 2. Transform base holdings into PortfolioHoldings with calculated fields
       const holdingsWithPrices: PortfolioHolding[] = baseHoldings.map(holding => {
@@ -133,10 +143,27 @@ export default function Portfolio() {
       
       setTotalValue(total);
       setTotalGainLoss(totalGL);
-      setLastUpdated(new Date());
       
     } catch (error) {
       console.error('Error in loadPrices master flow:', error);
+    }
+  };
+
+  const loadAnalysis = async () => {
+    setAnalysisLoading(true);
+    setAnalysisError(null);
+
+    try {
+      const response = await api.analyzePortfolio();
+      setPortfolioAnalysis(response.data);
+      setAnalysisStale(false);
+      setCooldownRemainingSeconds(response.data.analysis_meta.cooldown_remaining_seconds);
+      setNextAvailableAt(response.data.analysis_meta.next_available_at);
+      setLastAnalysisAt(response.data.analysis_meta.last_analysis_at);
+    } catch (error) {
+      setAnalysisError((error as Error).message || 'Failed to analyze portfolio.');
+    } finally {
+      setAnalysisLoading(false);
     }
   };
 
@@ -224,28 +251,15 @@ export default function Portfolio() {
     }
   };
 
-  const handleRefreshPrices = async () => {
-    const baseHoldings = holdings.map(({ current_price, current_value, gain_loss, gain_loss_pct, price_loading, ...rest }) => rest);
-    setHoldings(holdings.map(h => ({ ...h, price_loading: true })));
-    await loadPrices(baseHoldings);
+  const handleRefreshHoldings = async () => {
+    await loadHoldings();
+    if (portfolioAnalysis) {
+      setAnalysisStale(true);
+    }
   };
 
   const handleRunAnalysis = async () => {
-    setAnalysisLoading(true);
-    setAnalysisError(null);
-
-    try {
-      const response = await api.analyzePortfolio();
-      setPortfolioAnalysis(response.data);
-      setAnalysisStale(false);
-      setCooldownRemainingSeconds(response.data.analysis_meta.cooldown_remaining_seconds);
-      setNextAvailableAt(response.data.analysis_meta.next_available_at);
-      setLastAnalysisAt(response.data.analysis_meta.last_analysis_at);
-    } catch (error) {
-      setAnalysisError((error as Error).message || 'Failed to analyze portfolio.');
-    } finally {
-      setAnalysisLoading(false);
-    }
+    await loadAnalysis();
   };
 
   const formatDuration = (seconds: number) => {
@@ -275,17 +289,6 @@ export default function Portfolio() {
                 {totalGainLoss >= 0 ? '+' : ''}${totalGainLoss.toFixed(2)}
               </span>
             </div>
-            {lastUpdated && (
-              <div className="summary-item">
-                <span className="summary-label">Last Updated</span>
-                <span className="summary-value-small">
-                  {lastUpdated.toLocaleTimeString()}
-                  <button onClick={handleRefreshPrices} className="btn-refresh">
-                    🔄 Refresh
-                  </button>
-                </span>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -323,7 +326,17 @@ export default function Portfolio() {
       </div>
 
       <div className="card">
-        <h2>Your Holdings</h2>
+        <div className="card-header">
+          <h2>Your Holdings</h2>
+          <button
+            onClick={handleRefreshHoldings}
+            className="btn-refresh"
+            disabled={pricesCached}
+            title={pricesCached ? 'Prices are already cached.' : 'Sync holdings and refresh prices.'}
+          >
+            Sync Holdings
+          </button>
+        </div>
         {holdings.length === 0 ? (
           <p>No holdings yet. Add your first stock above!</p>
         ) : (
