@@ -64,6 +64,11 @@ export interface HoldingCreate {
   avg_price: number;
 }
 
+export interface HoldingBulkRequest {
+  mode: 'merge' | 'replace';
+  holdings: HoldingCreate[];
+}
+
 export interface PortfolioHolding extends Holding {
   ticker: string;
   shares: number;
@@ -118,6 +123,9 @@ export const api = {
   
   deleteHolding: (holdingId: number) => 
     apiClient.delete(`/api/holdings/${holdingId}`),
+
+  bulkUpsertHoldings: (payload: HoldingBulkRequest) =>
+    apiClient.post<Holding[]>(`/api/holdings/bulk`, payload),
   
   analyzePortfolio: () => 
     apiClient.get<PortfolioAnalysis>(`/api/analysis`),

@@ -64,6 +64,10 @@ class HoldingBase(BaseModel):
 class HoldingCreate(HoldingBase):
     pass
 
+class HoldingBulkRequest(BaseModel):
+    mode: str = "merge"  # merge or replace
+    holdings: List[HoldingCreate]
+
 class HoldingResponse(HoldingBase):
     id: int
     class Config:
@@ -145,6 +149,21 @@ def _compute_risk_tolerance(age: int, income: float, retirement_years: int, obli
         return "aggressive"
     return "moderate"
 
+def _normalize_bulk_holdings(holdings: List[HoldingCreate]) -> List[HoldingCreate]:
+    grouped: dict[str, HoldingCreate] = {}
+    for item in holdings:
+        if item.shares <= 0 or item.avg_price <= 0:
+            raise HTTPException(status_code=400, detail="Shares and avg price must be positive numbers")
+        ticker = item.ticker.upper()
+        if ticker in grouped:
+            existing = grouped[ticker]
+            total_shares = existing.shares + item.shares
+            weighted_avg = ((existing.shares * existing.avg_price) + (item.shares * item.avg_price)) / total_shares
+            grouped[ticker] = HoldingCreate(ticker=ticker, shares=total_shares, avg_price=weighted_avg)
+        else:
+            grouped[ticker] = HoldingCreate(ticker=ticker, shares=item.shares, avg_price=item.avg_price)
+    return list(grouped.values())
+
 @app.post("/api/holdings", response_model=HoldingResponse)
 def upsert_holding(
     holding_in: HoldingCreate,
@@ -214,6 +233,49 @@ def update_holding(
     db.commit()
     db.refresh(holding)
     return holding
+
+@app.post("/api/holdings/bulk", response_model=List[HoldingResponse])
+def bulk_upsert_holdings(
+    payload: HoldingBulkRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    mode = (payload.mode or "merge").lower()
+    if mode not in {"merge", "replace"}:
+        raise HTTPException(status_code=400, detail="Mode must be 'merge' or 'replace'")
+
+    normalized = _normalize_bulk_holdings(payload.holdings)
+
+    if mode == "replace":
+        db.query(models.Holding).filter(models.Holding.user_id == current_user.id).delete(synchronize_session=False)
+        for item in normalized:
+            db.add(models.Holding(
+                user_id=current_user.id,
+                ticker=item.ticker.upper(),
+                shares=item.shares,
+                avg_price=item.avg_price
+            ))
+        db.commit()
+        return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
+
+    existing = db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
+    existing_map = {h.ticker.upper(): h for h in existing}
+    for item in normalized:
+        ticker = item.ticker.upper()
+        if ticker in existing_map:
+            holding = existing_map[ticker]
+            total_shares = holding.shares + item.shares
+            holding.avg_price = ((holding.shares * holding.avg_price) + (item.shares * item.avg_price)) / total_shares
+            holding.shares = total_shares
+        else:
+            db.add(models.Holding(
+                user_id=current_user.id,
+                ticker=ticker,
+                shares=item.shares,
+                avg_price=item.avg_price
+            ))
+    db.commit()
+    return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
 
 # Get all holdings for a user
 @app.get("/api/holdings", response_model=List[HoldingResponse])

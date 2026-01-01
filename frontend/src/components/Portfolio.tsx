@@ -27,6 +27,11 @@ export default function Portfolio() {
   const [nextAvailableAt, setNextAvailableAt] = useState<string | null>(null);
   const [lastAnalysisAt, setLastAnalysisAt] = useState<string | null>(null);
   const [pricesCached, setPricesCached] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
+  const [importPreview, setImportPreview] = useState<Holding[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
   
   // Edit state
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -35,10 +40,7 @@ export default function Portfolio() {
 
   useEffect(() => {
     const init = async () => {
-      const baseHoldings = await loadHoldings();
-      if (baseHoldings.length > 0) {
-        await loadAnalysis();
-      }
+      await loadHoldings();
     };
     init();
   }, []);
@@ -258,6 +260,78 @@ export default function Portfolio() {
     }
   };
 
+  const parseImport = () => {
+    const lines = importText.split('\n');
+    const preview: Holding[] = [];
+    const errors: string[] = [];
+
+    lines.forEach((rawLine, index) => {
+      const line = rawLine.trim();
+      if (!line) {
+        return;
+      }
+
+      const lower = line.toLowerCase();
+      if (lower.includes('ticker') && lower.includes('shares')) {
+        return;
+      }
+
+      const parts = line.includes(',')
+        ? line.split(',').map((part) => part.trim())
+        : line.split(/\s+/);
+
+      if (parts.length < 3) {
+        errors.push(`Line ${index + 1}: expected 3 columns (ticker, shares, avg price).`);
+        return;
+      }
+
+      const [tickerRaw, sharesRaw, priceRaw] = parts;
+      const sharesValue = parseFloat(sharesRaw);
+      const priceValue = parseFloat(priceRaw);
+      if (!tickerRaw || Number.isNaN(sharesValue) || Number.isNaN(priceValue)) {
+        errors.push(`Line ${index + 1}: invalid values.`);
+        return;
+      }
+
+      preview.push({
+        id: index,
+        ticker: tickerRaw.toUpperCase(),
+        shares: sharesValue,
+        avg_price: priceValue
+      });
+    });
+
+    setImportPreview(preview);
+    setImportErrors(errors);
+  };
+
+  const handleImportHoldings = async () => {
+    if (importPreview.length === 0 || importErrors.length > 0) {
+      return;
+    }
+
+    setImportLoading(true);
+    try {
+      await api.bulkUpsertHoldings({
+        mode: importMode,
+        holdings: importPreview.map(({ ticker, shares, avg_price }) => ({
+          ticker,
+          shares,
+          avg_price
+        }))
+      });
+      await loadHoldings();
+      setAnalysisStale(true);
+      setImportText('');
+      setImportPreview([]);
+      setImportErrors([]);
+    } catch (error) {
+      alert('Import failed: ' + (error as Error).message);
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const handleRunAnalysis = async () => {
     await loadAnalysis();
   };
@@ -323,6 +397,64 @@ export default function Portfolio() {
             <button type="submit" className="btn-primary">Add</button>
           </div>
         </form>
+      </div>
+
+      <div className="card">
+        <h2>Import Portfolio</h2>
+        <p className="muted">Paste rows like: Ticker, Shares, Avg Price (one per line).</p>
+        <textarea
+          className="import-textarea"
+          rows={6}
+          placeholder="AAPL, 10, 150.25"
+          value={importText}
+          onChange={(e) => setImportText(e.target.value)}
+        />
+        <div className="form-row">
+          <select value={importMode} onChange={(e) => setImportMode(e.target.value as 'merge' | 'replace')}>
+            <option value="merge">Merge with existing holdings</option>
+            <option value="replace">Replace existing holdings</option>
+          </select>
+          <button type="button" className="btn-secondary" onClick={parseImport}>
+            Preview Import
+          </button>
+        </div>
+        {importErrors.length > 0 && (
+          <div className="error">
+            {importErrors.map((err) => (
+              <div key={err}>{err}</div>
+            ))}
+          </div>
+        )}
+        {importPreview.length > 0 && importErrors.length === 0 && (
+          <>
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Shares</th>
+                  <th>Avg Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {importPreview.map((row) => (
+                  <tr key={`${row.ticker}-${row.id}`}>
+                    <td>{row.ticker}</td>
+                    <td>{row.shares}</td>
+                    <td>${row.avg_price.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleImportHoldings}
+              disabled={importLoading}
+            >
+              {importLoading ? 'Importing...' : 'Import Holdings'}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="card">
