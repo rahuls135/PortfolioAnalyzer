@@ -114,6 +114,12 @@
   background: #e0e7ff;
 }
 
+.btn-secondary-active {
+  background: #c7d2fe;
+  border-color: #818cf8;
+  color: #3730a3;
+}
+
 .risk-mode-bar {
   display: flex;
   align-items: center;
@@ -126,6 +132,7 @@
   display: flex;
   gap: 1rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .form-row input {
@@ -151,6 +158,26 @@
   font-size: 0.95rem;
   margin-bottom: 1rem;
   resize: vertical;
+}
+
+.import-table input {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.import-table th:last-child,
+.import-table td:last-child {
+  width: 110px;
+  text-align: center;
+}
+
+.advanced-import {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
 }
 
 .btn-primary {

@@ -69,6 +69,11 @@ export interface HoldingBulkRequest {
   holdings: HoldingCreate[];
 }
 
+export interface TickerValidation {
+  ticker: string;
+  valid: boolean;
+}
+
 export interface PortfolioHolding extends Holding {
   ticker: string;
   shares: number;
@@ -126,6 +131,9 @@ export const api = {
 
   bulkUpsertHoldings: (payload: HoldingBulkRequest) =>
     apiClient.post<Holding[]>(`/api/holdings/bulk`, payload),
+
+  validateTicker: (ticker: string) =>
+    apiClient.get<TickerValidation>(`/api/tickers/validate/${ticker}`),
   
   analyzePortfolio: () => 
     apiClient.get<PortfolioAnalysis>(`/api/analysis`),

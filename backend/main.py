@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from datetime import datetime, timezone, timedelta, time
 from typing import List, Optional
 import os
@@ -60,6 +60,19 @@ class HoldingBase(BaseModel):
     ticker: str
     shares: float
     avg_price: float
+
+    @validator("ticker")
+    def validate_ticker(cls, value: str) -> str:
+        cleaned = value.strip().upper()
+        if not cleaned or not cleaned.isalnum() or len(cleaned) > 10:
+            raise ValueError("Ticker must be alphanumeric and up to 10 characters")
+        return cleaned
+
+    @validator("shares", "avg_price")
+    def validate_positive_numbers(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("Shares and avg price must be positive numbers")
+        return value
 
 class HoldingCreate(HoldingBase):
     pass
@@ -149,11 +162,34 @@ def _compute_risk_tolerance(age: int, income: float, retirement_years: int, obli
         return "aggressive"
     return "moderate"
 
+def _validate_ticker(ticker: str, db: Session) -> bool:
+    stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
+    if stock and stock.current_price is not None:
+        return True
+
+    api_key = os.getenv("ALPHA_VANTAGE_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
+
+    price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
+    price_res = requests.get(price_url).json()
+
+    if price_res.get("Note") or price_res.get("Information"):
+        raise HTTPException(status_code=429, detail="Alpha Vantage rate limit reached")
+
+    quote = price_res.get("Global Quote") or {}
+    price = quote.get("05. price")
+    if not price:
+        return False
+    try:
+        float(price)
+    except (TypeError, ValueError):
+        return False
+    return True
+
 def _normalize_bulk_holdings(holdings: List[HoldingCreate]) -> List[HoldingCreate]:
     grouped: dict[str, HoldingCreate] = {}
     for item in holdings:
-        if item.shares <= 0 or item.avg_price <= 0:
-            raise HTTPException(status_code=400, detail="Shares and avg price must be positive numbers")
         ticker = item.ticker.upper()
         if ticker in grouped:
             existing = grouped[ticker]
@@ -194,6 +230,9 @@ def upsert_holding(
         db.commit()
         db.refresh(existing_holding)
         return existing_holding
+    
+    if not _validate_ticker(ticker_upper, db):
+        raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker_upper}")
 
     # 3. Insert Logic: Create a brand new record
     new_holding = models.Holding(
@@ -245,6 +284,9 @@ def bulk_upsert_holdings(
         raise HTTPException(status_code=400, detail="Mode must be 'merge' or 'replace'")
 
     normalized = _normalize_bulk_holdings(payload.holdings)
+    for item in normalized:
+        if not _validate_ticker(item.ticker.upper(), db):
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {item.ticker.upper()}")
 
     if mode == "replace":
         db.query(models.Holding).filter(models.Holding.user_id == current_user.id).delete(synchronize_session=False)
@@ -276,6 +318,18 @@ def bulk_upsert_holdings(
             ))
     db.commit()
     return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
+
+@app.get("/api/tickers/validate/{ticker}")
+def validate_ticker(
+    ticker: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    cleaned = ticker.strip().upper()
+    if not cleaned or not cleaned.isalnum() or len(cleaned) > 10:
+        return {"ticker": cleaned, "valid": False}
+    is_valid = _validate_ticker(cleaned, db)
+    return {"ticker": cleaned, "valid": is_valid}
 
 # Get all holdings for a user
 @app.get("/api/holdings", response_model=List[HoldingResponse])
@@ -311,7 +365,9 @@ def get_stock_data(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    ticker = ticker.upper()
+    ticker = ticker.strip().upper()
+    if not ticker or not ticker.isalnum() or len(ticker) > 10:
+        raise HTTPException(status_code=400, detail="Invalid ticker format")
     api_key = os.getenv("ALPHA_VANTAGE_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
@@ -388,6 +444,8 @@ def create_user_profile(
         raise HTTPException(status_code=400, detail="User profile already exists")
     
     obligations_amount = float(user.obligations_amount or 0)
+    if obligations_amount < 0:
+        raise HTTPException(status_code=400, detail="Obligations amount must be a positive number")
     risk_mode = user.risk_assessment_mode or "manual"
     if risk_mode not in {"manual", "ai"}:
         raise HTTPException(status_code=400, detail="Invalid risk assessment mode")
@@ -608,6 +666,10 @@ def update_my_profile(
     updates = update.dict(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No profile fields provided")
+
+    if "obligations_amount" in updates and updates["obligations_amount"] is not None:
+        if updates["obligations_amount"] < 0:
+            raise HTTPException(status_code=400, detail="Obligations amount must be a positive number")
 
     if "risk_assessment_mode" in updates:
         if updates["risk_assessment_mode"] not in {"manual", "ai"}:
