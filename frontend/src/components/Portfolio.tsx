@@ -193,7 +193,7 @@ export default function Portfolio() {
         });
         const results = await Promise.allSettled(
           topHoldings.map((holding) =>
-            api.getEarningsTranscript(holding.ticker, quarter)
+            api.getEarningsTranscript(holding.ticker, quarter, 2)
           )
         );
         const summaries: Record<string, string> = {};

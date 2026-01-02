@@ -149,9 +149,9 @@ export const api = {
   validateTicker: (ticker: string) =>
     apiClient.get<TickerValidation>(`/api/tickers/validate/${ticker}`),
 
-  getEarningsTranscript: (ticker: string, quarter: string) =>
+  getEarningsTranscript: (ticker: string, quarter: string, fallback: number = 0) =>
     apiClient.get<EarningsTranscriptSummary>(`/api/earnings/transcripts/${ticker}`, {
-      params: { quarter }
+      params: { quarter, fallback }
     }),
   
   analyzePortfolio: () => 

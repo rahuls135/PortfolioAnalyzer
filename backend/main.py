@@ -849,6 +849,7 @@ def update_my_profile(
 def get_earnings_transcript(
     ticker: str,
     quarter: str,
+    fallback: Optional[int] = 0,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -858,11 +859,64 @@ def get_earnings_transcript(
     if not quarter or not re.match(r"^\d{4}Q[1-4]$", quarter):
         raise HTTPException(status_code=400, detail="Quarter must be like 2024Q1")
 
-    existing = db.query(models.EarningsTranscript).filter(
-        models.EarningsTranscript.ticker == cleaned,
-        models.EarningsTranscript.quarter == quarter
-    ).first()
-    if existing and existing.summary:
+    def previous_quarter(q: str) -> str:
+        year = int(q[:4])
+        quarter_num = int(q[-1])
+        if quarter_num == 1:
+            return f"{year - 1}Q4"
+        return f"{year}Q{quarter_num - 1}"
+
+    remaining = max(0, min(fallback or 0, 4))
+    attempts = []
+    current_quarter = quarter
+    for _ in range(remaining + 1):
+        attempts.append(current_quarter)
+        current_quarter = previous_quarter(current_quarter)
+
+    for candidate in attempts:
+        existing = db.query(models.EarningsTranscript).filter(
+            models.EarningsTranscript.ticker == cleaned,
+            models.EarningsTranscript.quarter == candidate
+        ).first()
+        if existing and existing.summary:
+            return {
+                "ticker": existing.ticker,
+                "quarter": existing.quarter,
+                "summary": existing.summary,
+                "fetched_at": existing.fetched_at
+            }
+
+        api_key = os.getenv("ALPHA_VANTAGE_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
+
+        url = f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={cleaned}&quarter={candidate}&apikey={api_key}"
+        res = requests.get(url).json()
+        if res.get("Note") or res.get("Information"):
+            message = res.get("Note") or res.get("Information")
+            raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
+
+        transcript_text = res.get("transcript", "")
+        if not transcript_text:
+            continue
+
+        summary = _summarize_transcript(transcript_text)
+        fetched_at = datetime.now(timezone.utc)
+        if existing:
+            existing.transcript = transcript_text
+            existing.summary = summary
+            existing.fetched_at = fetched_at
+        else:
+            existing = models.EarningsTranscript(
+                ticker=cleaned,
+                quarter=candidate,
+                transcript=transcript_text,
+                summary=summary,
+                fetched_at=fetched_at
+            )
+            db.add(existing)
+        db.commit()
+
         return {
             "ticker": existing.ticker,
             "quarter": existing.quarter,
@@ -870,40 +924,4 @@ def get_earnings_transcript(
             "fetched_at": existing.fetched_at
         }
 
-    api_key = os.getenv("ALPHA_VANTAGE_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
-
-    url = f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={cleaned}&quarter={quarter}&apikey={api_key}"
-    res = requests.get(url).json()
-    if res.get("Note") or res.get("Information"):
-        message = res.get("Note") or res.get("Information")
-        raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
-
-    transcript_text = res.get("transcript", "")
-    if not transcript_text:
-        raise HTTPException(status_code=404, detail="Transcript not found")
-
-    summary = _summarize_transcript(transcript_text)
-    fetched_at = datetime.now(timezone.utc)
-    if existing:
-        existing.transcript = transcript_text
-        existing.summary = summary
-        existing.fetched_at = fetched_at
-    else:
-        existing = models.EarningsTranscript(
-            ticker=cleaned,
-            quarter=quarter,
-            transcript=transcript_text,
-            summary=summary,
-            fetched_at=fetched_at
-        )
-        db.add(existing)
-    db.commit()
-
-    return {
-        "ticker": existing.ticker,
-        "quarter": existing.quarter,
-        "summary": existing.summary,
-        "fetched_at": existing.fetched_at
-    }
+    raise HTTPException(status_code=404, detail="Transcript not found")
