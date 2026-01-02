@@ -13,6 +13,7 @@ import models
 from auth import get_current_user, get_supabase_user_id
 
 app = FastAPI()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("portfolio_analyzer")
 
 # Allow frontend to make requests
