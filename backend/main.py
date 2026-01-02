@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from datetime import datetime, timezone, timedelta, time
-import logging
 from typing import List, Optional, Set
 import os
 import requests
@@ -13,8 +12,6 @@ import models
 from auth import get_current_user, get_supabase_user_id
 
 app = FastAPI()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("portfolio_analyzer")
 
 # Allow frontend to make requests
 FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGINS", "")
@@ -211,6 +208,7 @@ def _validate_ticker(ticker: str, db: Session) -> bool:
     price_res = requests.get(price_url).json()
 
     if price_res.get("Note") or price_res.get("Information"):
+        print("B - IN Here 429 Error!")
         raise HTTPException(status_code=429, detail="Alpha Vantage rate limit reached")
 
     quote = price_res.get("Global Quote") or {}
@@ -423,12 +421,13 @@ def get_stock_data(
             }
     
     # 2. Cache expired or missing: Fetch Price
-    logger.info("Alpha Vantage price fetch for %s", ticker)
+    print(f"Alpha Vantage price fetch for {ticker}")
     price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
     price_res = requests.get(price_url).json()
     
     if price_res.get("Note") or price_res.get("Information"):
         message = price_res.get("Note") or price_res.get("Information")
+        print("A - IN Here 429 Error!")
         raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
     if "Global Quote" not in price_res or not price_res["Global Quote"]:
         raise HTTPException(status_code=404, detail="Stock price not found")
@@ -439,7 +438,7 @@ def get_stock_data(
     # Note: Free tier has rate limits, so we only do this if sector is missing
     sector = "Unknown"
     if not stock or not stock.sector or stock.sector == "Unknown":
-        logger.info("Alpha Vantage overview fetch for %s", ticker)
+        print(f"Alpha Vantage overview fetch for {ticker}")
         overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
         overview_res = requests.get(overview_url).json()
         sector = overview_res.get("Sector", "Unknown")
