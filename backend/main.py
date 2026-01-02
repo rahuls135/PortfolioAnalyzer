@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from datetime import datetime, timezone, timedelta, time
+import logging
 from typing import List, Optional, Set
 import os
 import requests
@@ -12,6 +13,7 @@ import models
 from auth import get_current_user, get_supabase_user_id
 
 app = FastAPI()
+logger = logging.getLogger("portfolio_analyzer")
 
 # Allow frontend to make requests
 FRONTEND_ORIGINS = os.getenv("FRONTEND_ORIGINS", "")
@@ -420,6 +422,7 @@ def get_stock_data(
             }
     
     # 2. Cache expired or missing: Fetch Price
+    logger.info("Alpha Vantage price fetch for %s", ticker)
     price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
     price_res = requests.get(price_url).json()
     
@@ -435,6 +438,7 @@ def get_stock_data(
     # Note: Free tier has rate limits, so we only do this if sector is missing
     sector = "Unknown"
     if not stock or not stock.sector or stock.sector == "Unknown":
+        logger.info("Alpha Vantage overview fetch for %s", ticker)
         overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
         overview_res = requests.get(overview_url).json()
         sector = overview_res.get("Sector", "Unknown")
