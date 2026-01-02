@@ -89,6 +89,12 @@ export interface PortfolioAnalysis {
   total_value: number;
   holdings: PortfolioHolding[];
   ai_analysis: string;
+  metrics: {
+    sector_allocation: Array<{ sector: string; value: number; pct: number }>;
+    top_holdings: Array<{ ticker: string; value: number; pct: number }>;
+    concentration_top3_pct: number;
+    diversification_score: number;
+  };
   user_profile: {
     age: number;
     risk_tolerance: string;

@@ -563,6 +563,12 @@ def analyze_portfolio(
             "total_value": 0,
             "holdings": [],
             "ai_analysis": "Add some holdings to see your portfolio analysis!",
+            "metrics": {
+                "sector_allocation": [],
+                "top_holdings": [],
+                "concentration_top3_pct": 0,
+                "diversification_score": 0
+            },
             "user_profile": {
                 "age": current_user.age,
                 "risk_tolerance": current_user.risk_tolerance,
@@ -655,11 +661,38 @@ Risk Assessment: Your {current_user.risk_tolerance} risk tolerance ({risk_mode} 
         profile.portfolio_analysis = ai_analysis
         profile.portfolio_analysis_at = now_utc
         db.commit()
-    
+
+    sector_totals: dict[str, float] = {}
+    for holding in portfolio_summary:
+        sector = holding.get("sector") or "Unknown"
+        sector_totals[sector] = sector_totals.get(sector, 0) + holding["current_value"]
+    sector_allocation = [
+        {"sector": sector, "value": value, "pct": (value / total_value * 100) if total_value else 0}
+        for sector, value in sorted(sector_totals.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+    sorted_holdings = sorted(portfolio_summary, key=lambda h: h["current_value"], reverse=True)
+    top_holdings = [
+        {
+            "ticker": h["ticker"],
+            "value": h["current_value"],
+            "pct": (h["current_value"] / total_value * 100) if total_value else 0
+        }
+        for h in sorted_holdings[:5]
+    ]
+    concentration_top3 = sum(h["current_value"] for h in sorted_holdings[:3]) / total_value * 100 if total_value else 0
+    diversification_score = max(0, min(100, 100 - concentration_top3))
+
     return {
         "total_value": total_value,
         "holdings": portfolio_summary,
         "ai_analysis": ai_analysis,
+        "metrics": {
+            "sector_allocation": sector_allocation,
+            "top_holdings": top_holdings,
+            "concentration_top3_pct": concentration_top3,
+            "diversification_score": diversification_score
+        },
         "user_profile": {
             "age": current_user.age,
             "risk_tolerance": current_user.risk_tolerance,

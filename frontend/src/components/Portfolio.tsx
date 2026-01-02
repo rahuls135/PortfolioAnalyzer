@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import Analysis from './Analysis';
+import AnalysisMetrics from './AnalysisMetrics';
 import type { PortfolioHolding, Holding, PortfolioAnalysis } from '../api';
 
 interface HoldingWithPrice extends Holding {
@@ -293,6 +294,19 @@ export default function Portfolio() {
     }
   };
 
+  const addImportRowAfter = (rowId: number) => {
+    const newRow = { id: Date.now(), ticker: '', shares: '', avg_price: '' };
+    setImportRows((prev) => {
+      const index = prev.findIndex((row) => row.id === rowId);
+      if (index === -1) {
+        return [...prev, newRow];
+      }
+      const next = [...prev];
+      next.splice(index + 1, 0, newRow);
+      return next;
+    });
+  };
+
   const handleRunAnalysis = async () => {
     await loadAnalysis();
   };
@@ -346,8 +360,8 @@ export default function Portfolio() {
               </tr>
             </thead>
             <tbody>
-              {importRows.map((row) => (
-                <tr key={row.id}>
+                {importRows.map((row, index) => (
+                  <tr key={row.id}>
                   <td>
                     <input
                       type="text"
@@ -389,35 +403,46 @@ export default function Portfolio() {
                       placeholder="150.25"
                     />
                   </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn-delete"
-                      onClick={() => setImportRows((prev) => prev.filter((item) => item.id !== row.id))}
-                      disabled={importRows.length === 1}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setImportRows((prev) => ([
-              ...prev,
-              { id: Date.now(), ticker: '', shares: '', avg_price: '' }
-            ]))}
-          >
-            Add Row
-          </button>
-          <div className="form-row">
-            <button
-              type="button"
-              className={`btn-secondary ${importMode === 'merge' ? 'btn-secondary-active' : ''}`}
-              onClick={() => setImportMode('merge')}
+                    <td>
+                      <div className="import-row-actions">
+                        {importRows.length > 1 && index !== 0 ? (
+                          <button
+                            type="button"
+                            className="btn-delete"
+                            onClick={() => setImportRows((prev) => prev.filter((item) => item.id !== row.id))}
+                            aria-label="Remove row"
+                          >
+                            ✕
+                          </button>
+                        ) : (
+                          <span className="import-row-spacer" />
+                        )}
+                        {index === importRows.length - 1
+                        && row.ticker.trim()
+                        && row.shares.trim()
+                        && row.avg_price.trim() ? (
+                          <button
+                            type="button"
+                            className="btn-save"
+                            onClick={() => addImportRowAfter(row.id)}
+                            aria-label="Add row"
+                          >
+                            +
+                          </button>
+                        ) : (
+                          <span className="import-row-spacer" />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="form-row">
+              <button
+                type="button"
+                className={`btn-secondary ${importMode === 'merge' ? 'btn-secondary-active' : ''}`}
+                onClick={() => setImportMode('merge')}
             >
               Merge Import
             </button>
@@ -546,14 +571,16 @@ export default function Portfolio() {
                         <button 
                           onClick={() => handleEdit(holding)}
                           className="btn-edit"
+                          aria-label="Edit holding"
                         >
-                          Edit
+                          ✎
                         </button>
                         <button 
                           onClick={() => handleDelete(holding.id, holding.ticker)}
                           className="btn-delete"
+                          aria-label="Delete holding"
                         >
-                          Delete
+                          🗑
                         </button>
                       </td>
                     </>
@@ -590,7 +617,10 @@ export default function Portfolio() {
       </div>
 
       {portfolioAnalysis && (
-        <Analysis portfolioAnalysis={portfolioAnalysis} />
+        <>
+          <AnalysisMetrics portfolioAnalysis={portfolioAnalysis} />
+          <Analysis portfolioAnalysis={portfolioAnalysis} />
+        </>
       )}
     </div>
   );
