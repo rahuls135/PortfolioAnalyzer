@@ -45,6 +45,7 @@ class Holding(Base):
     ticker = Column(String, index=True)
     shares = Column(Float)
     avg_price = Column(Float)
+    asset_type = Column(String)
     
     user = relationship("User", back_populates="holdings")
 
@@ -55,6 +56,7 @@ class StockData(Base):
     current_price = Column(Float)
     pe_ratio = Column(Float, nullable=True)
     sector = Column(String, nullable=True)
+    asset_type = Column(String, nullable=True)
     market_cap = Column(Float, nullable=True)
     last_updated = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -68,4 +70,18 @@ class NewsItem(Base):
     published_date = Column(DateTime)
     ai_summary = Column(String)
     sentiment = Column(String)  # "positive", "negative", "neutral"
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+class EarningsTranscript(Base):
+    __tablename__ = "earnings_transcripts"
+    __table_args__ = (
+        UniqueConstraint("ticker", "quarter", name="uq_earnings_ticker_quarter"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticker = Column(String, index=True)
+    quarter = Column(String, index=True)
+    transcript = Column(String)
+    summary = Column(String)
+    fetched_at = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

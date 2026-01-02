@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta, time
 from typing import List, Optional, Set
 import os
 import requests
+import re
 from zoneinfo import ZoneInfo
 from database import get_db, engine, Base
 import models
@@ -83,8 +84,15 @@ class HoldingBulkRequest(BaseModel):
 
 class HoldingResponse(HoldingBase):
     id: int
+    asset_type: Optional[str] = None
     class Config:
         from_attributes = True
+
+class EarningsTranscriptResponse(BaseModel):
+    ticker: str
+    quarter: str
+    summary: str
+    fetched_at: Optional[datetime] = None
 
 @app.get("/")
 def read_root():
@@ -221,6 +229,54 @@ def _validate_ticker(ticker: str, db: Session) -> bool:
         return False
     return True
 
+def _fetch_overview_fields(ticker: str) -> dict:
+    api_key = os.getenv("ALPHA_VANTAGE_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
+    overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
+    overview_res = requests.get(overview_url).json()
+    if overview_res.get("Note") or overview_res.get("Information"):
+        message = overview_res.get("Note") or overview_res.get("Information")
+        raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
+    return {
+        "sector": overview_res.get("Sector", "Unknown"),
+        "asset_type": overview_res.get("AssetType", "Unknown")
+    }
+
+def _get_asset_type(ticker: str, db: Session) -> str:
+    stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
+    if stock and stock.asset_type and stock.asset_type != "Unknown":
+        return stock.asset_type
+    overview = _fetch_overview_fields(ticker)
+    asset_type = overview.get("asset_type", "Unknown")
+    sector = overview.get("sector", "Unknown")
+    if stock:
+        if asset_type != "Unknown":
+            stock.asset_type = asset_type
+        if sector != "Unknown" and (not stock.sector or stock.sector == "Unknown"):
+            stock.sector = sector
+        db.commit()
+        db.refresh(stock)
+    else:
+        stock = models.StockData(
+            ticker=ticker,
+            sector=sector,
+            asset_type=asset_type,
+            last_updated=datetime.now(timezone.utc)
+        )
+        db.add(stock)
+        db.commit()
+    return asset_type
+
+def _summarize_transcript(text: str, max_sentences: int = 4, max_chars: int = 800) -> str:
+    if not text:
+        return ""
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    summary = " ".join(sentences[:max_sentences]).strip()
+    if len(summary) > max_chars:
+        summary = summary[:max_chars].rstrip() + "..."
+    return summary
+
 def _normalize_bulk_holdings(holdings: List[HoldingCreate]) -> List[HoldingCreate]:
     grouped: dict[str, HoldingCreate] = {}
     for item in holdings:
@@ -274,6 +330,7 @@ def upsert_holding(
         ticker=ticker_upper,
         shares=holding_in.shares,
         avg_price=holding_in.avg_price,
+        asset_type=_get_asset_type(ticker_upper, db)
     )
 
     db.add(new_holding)
@@ -318,9 +375,12 @@ def bulk_upsert_holdings(
         raise HTTPException(status_code=400, detail="Mode must be 'merge' or 'replace'")
 
     normalized = _normalize_bulk_holdings(payload.holdings)
+    asset_types: dict[str, str] = {}
     for item in normalized:
-        if not _validate_ticker(item.ticker.upper(), db):
-            raise HTTPException(status_code=400, detail=f"Invalid ticker: {item.ticker.upper()}")
+        ticker = item.ticker.upper()
+        if not _validate_ticker(ticker, db):
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
+        asset_types[ticker] = _get_asset_type(ticker, db)
 
     if mode == "replace":
         db.query(models.Holding).filter(models.Holding.user_id == current_user.id).delete(synchronize_session=False)
@@ -329,7 +389,8 @@ def bulk_upsert_holdings(
                 user_id=current_user.id,
                 ticker=item.ticker.upper(),
                 shares=item.shares,
-                avg_price=item.avg_price
+                avg_price=item.avg_price,
+                asset_type=asset_types.get(item.ticker.upper())
             ))
         db.commit()
         return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
@@ -348,7 +409,8 @@ def bulk_upsert_holdings(
                 user_id=current_user.id,
                 ticker=ticker,
                 shares=item.shares,
-                avg_price=item.avg_price
+                avg_price=item.avg_price,
+                asset_type=asset_types.get(ticker)
             ))
     db.commit()
     return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
@@ -437,22 +499,27 @@ def get_stock_data(
     # 3. Fetch Sector/Metadata (Alpha Vantage OVERVIEW)
     # Note: Free tier has rate limits, so we only do this if sector is missing
     sector = "Unknown"
-    if not stock or not stock.sector or stock.sector == "Unknown":
+    asset_type = "Unknown"
+    if not stock or not stock.sector or stock.sector == "Unknown" or not stock.asset_type or stock.asset_type == "Unknown":
         print(f"Alpha Vantage overview fetch for {ticker}")
-        overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
-        overview_res = requests.get(overview_url).json()
-        sector = overview_res.get("Sector", "Unknown")
+        overview = _fetch_overview_fields(ticker)
+        sector = overview.get("sector", "Unknown")
+        asset_type = overview.get("asset_type", "Unknown")
 
     # 4. Update Database
     if stock:
         stock.current_price = current_price
-        if sector != "Unknown": stock.sector = sector
+        if sector != "Unknown":
+            stock.sector = sector
+        if asset_type != "Unknown":
+            stock.asset_type = asset_type
         stock.last_updated = datetime.now(timezone.utc)
     else:
         stock = models.StockData(
             ticker=ticker,
             current_price=current_price,
             sector=sector,
+            asset_type=asset_type,
             last_updated=datetime.now(timezone.utc)
         )
         db.add(stock)
@@ -464,6 +531,7 @@ def get_stock_data(
         "ticker": stock.ticker,
         "current_price": stock.current_price,
         "sector": stock.sector,
+        "asset_type": stock.asset_type,
         "cached": False
     }
 
@@ -775,4 +843,67 @@ def update_my_profile(
         "retirement_years": current_user.retirement_years,
         "obligations_amount": current_user.obligations_amount,
         "ai_analysis": profile.ai_analysis if profile else None
+    }
+
+@app.get("/api/earnings/transcripts/{ticker}", response_model=EarningsTranscriptResponse)
+def get_earnings_transcript(
+    ticker: str,
+    quarter: str,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    cleaned = ticker.strip().upper()
+    if not cleaned or not cleaned.isalnum() or len(cleaned) > 10:
+        raise HTTPException(status_code=400, detail="Invalid ticker format")
+    if not quarter or not re.match(r"^\d{4}Q[1-4]$", quarter):
+        raise HTTPException(status_code=400, detail="Quarter must be like 2024Q1")
+
+    existing = db.query(models.EarningsTranscript).filter(
+        models.EarningsTranscript.ticker == cleaned,
+        models.EarningsTranscript.quarter == quarter
+    ).first()
+    if existing and existing.summary:
+        return {
+            "ticker": existing.ticker,
+            "quarter": existing.quarter,
+            "summary": existing.summary,
+            "fetched_at": existing.fetched_at
+        }
+
+    api_key = os.getenv("ALPHA_VANTAGE_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
+
+    url = f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={cleaned}&quarter={quarter}&apikey={api_key}"
+    res = requests.get(url).json()
+    if res.get("Note") or res.get("Information"):
+        message = res.get("Note") or res.get("Information")
+        raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
+
+    transcript_text = res.get("transcript", "")
+    if not transcript_text:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    summary = _summarize_transcript(transcript_text)
+    fetched_at = datetime.now(timezone.utc)
+    if existing:
+        existing.transcript = transcript_text
+        existing.summary = summary
+        existing.fetched_at = fetched_at
+    else:
+        existing = models.EarningsTranscript(
+            ticker=cleaned,
+            quarter=quarter,
+            transcript=transcript_text,
+            summary=summary,
+            fetched_at=fetched_at
+        )
+        db.add(existing)
+    db.commit()
+
+    return {
+        "ticker": existing.ticker,
+        "quarter": existing.quarter,
+        "summary": existing.summary,
+        "fetched_at": existing.fetched_at
     }

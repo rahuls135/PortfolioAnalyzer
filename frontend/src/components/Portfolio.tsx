@@ -22,6 +22,9 @@ export default function Portfolio() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisStale, setAnalysisStale] = useState(false);
+  const [transcriptSummaries, setTranscriptSummaries] = useState<Record<string, string>>({});
+  const [transcriptsLoading, setTranscriptsLoading] = useState(false);
+  const [transcriptsError, setTranscriptsError] = useState<string | null>(null);
   const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState(0);
   const [nextAvailableAt, setNextAvailableAt] = useState<string | null>(null);
   const [lastAnalysisAt, setLastAnalysisAt] = useState<string | null>(null);
@@ -156,6 +159,7 @@ export default function Portfolio() {
   const loadAnalysis = async () => {
     setAnalysisLoading(true);
     setAnalysisError(null);
+    setTranscriptsError(null);
 
     try {
       const response = await api.analyzePortfolio();
@@ -164,6 +168,46 @@ export default function Portfolio() {
       setCooldownRemainingSeconds(response.data.analysis_meta.cooldown_remaining_seconds);
       setNextAvailableAt(response.data.analysis_meta.next_available_at);
       setLastAnalysisAt(response.data.analysis_meta.last_analysis_at);
+
+      if (response.data.holdings.length > 0) {
+        const now = new Date();
+        const quarter = `${now.getFullYear()}Q${Math.floor(now.getMonth() / 3) + 1}`;
+        setTranscriptsLoading(true);
+        const excludedAssetTypes = new Set(['ETF', 'MUTUAL FUND', 'FUND']);
+        const filteredHoldings = response.data.holdings.filter((holding) => {
+          const assetType = holding.asset_type?.toUpperCase();
+          return !assetType || !excludedAssetTypes.has(assetType);
+        });
+        const sortedHoldings = [...filteredHoldings].sort((a, b) => b.current_value - a.current_value);
+        const totalValue = sortedHoldings.reduce((sum, holding) => sum + holding.current_value, 0);
+        let running = 0;
+        const topHoldings = sortedHoldings.filter((holding) => {
+          if (totalValue <= 0) {
+            return false;
+          }
+          if (running / totalValue >= 0.7) {
+            return false;
+          }
+          running += holding.current_value;
+          return true;
+        });
+        const results = await Promise.allSettled(
+          topHoldings.map((holding) =>
+            api.getEarningsTranscript(holding.ticker, quarter)
+          )
+        );
+        const summaries: Record<string, string> = {};
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            summaries[result.value.data.ticker] = result.value.data.summary;
+          }
+        });
+        setTranscriptSummaries(summaries);
+        if (results.some((result) => result.status === 'rejected')) {
+          setTranscriptsError('Some transcripts could not be loaded.');
+        }
+        setTranscriptsLoading(false);
+      }
     } catch (error) {
       setAnalysisError((error as Error).message || 'Failed to analyze portfolio.');
     } finally {
@@ -620,6 +664,20 @@ export default function Portfolio() {
         <>
           <AnalysisMetrics portfolioAnalysis={portfolioAnalysis} />
           <Analysis portfolioAnalysis={portfolioAnalysis} />
+          <div className="card">
+            <h2>Earnings Call Summaries</h2>
+            {transcriptsLoading && <span className="muted">Loading transcripts...</span>}
+            {transcriptsError && <div className="error">{transcriptsError}</div>}
+            {!transcriptsLoading && Object.keys(transcriptSummaries).length === 0 && (
+              <span className="muted">No summaries available yet.</span>
+            )}
+            {Object.entries(transcriptSummaries).map(([ticker, summary]) => (
+              <div key={ticker} className="transcript-summary">
+                <strong>{ticker}</strong>
+                <p>{summary}</p>
+              </div>
+            ))}
+          </div>
         </>
       )}
     </div>

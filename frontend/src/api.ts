@@ -56,6 +56,7 @@ export interface Holding {
   ticker: string;
   shares: number;
   avg_price: number;
+  asset_type?: string;
 }
 
 export interface HoldingCreate {
@@ -72,6 +73,13 @@ export interface HoldingBulkRequest {
 export interface TickerValidation {
   ticker: string;
   valid: boolean;
+}
+
+export interface EarningsTranscriptSummary {
+  ticker: string;
+  quarter: string;
+  summary: string;
+  fetched_at: string | null;
 }
 
 export interface PortfolioHolding extends Holding {
@@ -140,6 +148,11 @@ export const api = {
 
   validateTicker: (ticker: string) =>
     apiClient.get<TickerValidation>(`/api/tickers/validate/${ticker}`),
+
+  getEarningsTranscript: (ticker: string, quarter: string) =>
+    apiClient.get<EarningsTranscriptSummary>(`/api/earnings/transcripts/${ticker}`, {
+      params: { quarter }
+    }),
   
   analyzePortfolio: () => 
     apiClient.get<PortfolioAnalysis>(`/api/analysis`),

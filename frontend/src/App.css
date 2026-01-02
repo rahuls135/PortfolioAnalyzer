@@ -354,6 +354,17 @@ table th {
   color: #111827;
 }
 
+.transcript-summary {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eee;
+}
+
+.transcript-summary p {
+  margin: 0.5rem 0 0;
+  color: #374151;
+  line-height: 1.6;
+}
 .header-actions {
   display: flex;
   align-items: center;
