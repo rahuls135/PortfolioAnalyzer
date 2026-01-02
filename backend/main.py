@@ -424,7 +424,8 @@ def get_stock_data(
     price_res = requests.get(price_url).json()
     
     if price_res.get("Note") or price_res.get("Information"):
-        raise HTTPException(status_code=429, detail="Alpha Vantage rate limit reached")
+        message = price_res.get("Note") or price_res.get("Information")
+        raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
     if "Global Quote" not in price_res or not price_res["Global Quote"]:
         raise HTTPException(status_code=404, detail="Stock price not found")
     
@@ -433,7 +434,7 @@ def get_stock_data(
     # 3. Fetch Sector/Metadata (Alpha Vantage OVERVIEW)
     # Note: Free tier has rate limits, so we only do this if sector is missing
     sector = "Unknown"
-    if not stock or not stock.sector:
+    if not stock or not stock.sector or stock.sector == "Unknown":
         overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
         overview_res = requests.get(overview_url).json()
         sector = overview_res.get("Sector", "Unknown")

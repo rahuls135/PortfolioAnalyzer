@@ -6,6 +6,28 @@ interface AnalysisMetricsProps {
 
 export default function AnalysisMetrics({ portfolioAnalysis }: AnalysisMetricsProps) {
   const { metrics } = portfolioAnalysis;
+  const totalSectorPct = metrics.sector_allocation.reduce((sum, item) => sum + item.pct, 0);
+  let current = 0;
+  const pieStops = metrics.sector_allocation.map((item, index) => {
+    const start = current;
+    const size = totalSectorPct > 0 ? (item.pct / totalSectorPct) * 100 : 0;
+    current += size;
+    const hue = (index * 55) % 360;
+    return {
+      label: item.sector,
+      pct: item.pct,
+      color: `hsl(${hue} 75% 55%)`,
+      start,
+      end: current
+    };
+  });
+  const pieStyle = pieStops.length
+    ? {
+        background: `conic-gradient(${pieStops
+          .map((stop) => `${stop.color} ${stop.start}% ${stop.end}%`)
+          .join(', ')})`
+      }
+    : undefined;
 
   return (
     <div className="card">
@@ -13,18 +35,21 @@ export default function AnalysisMetrics({ portfolioAnalysis }: AnalysisMetricsPr
       <div className="metrics-grid">
         <div className="metrics-block">
           <h3>Sector Allocation</h3>
-          {metrics.sector_allocation.length === 0 ? (
+          {pieStops.length === 0 ? (
             <span className="muted">No sector data yet.</span>
           ) : (
-            metrics.sector_allocation.map((sector) => (
-              <div className="metrics-row" key={sector.sector}>
-                <div className="metrics-label">{sector.sector}</div>
-                <div className="metrics-bar">
-                  <span style={{ width: `${sector.pct.toFixed(1)}%` }} />
-                </div>
-                <div className="metrics-value">{sector.pct.toFixed(1)}%</div>
+            <div className="pie-layout">
+              <div className="pie-chart" style={pieStyle} />
+              <div className="pie-legend">
+                {pieStops.map((stop) => (
+                  <div className="pie-legend-row" key={stop.label}>
+                    <span className="pie-swatch" style={{ background: stop.color }} />
+                    <span className="pie-label">{stop.label}</span>
+                    <span className="pie-value">{stop.pct.toFixed(1)}%</span>
+                  </div>
+                ))}
               </div>
-            ))
+            </div>
           )}
         </div>
         <div className="metrics-block">
