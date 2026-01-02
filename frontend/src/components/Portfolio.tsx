@@ -14,10 +14,6 @@ interface HoldingWithPrice extends Holding {
 
 export default function Portfolio() {
   const [holdings, setHoldings] = useState<HoldingWithPrice[]>([]);
-  const [ticker, setTicker] = useState('');
-  const [shares, setShares] = useState('');
-  const [avgPrice, setAvgPrice] = useState('');
-  const [tickerError, setTickerError] = useState<string | null>(null);
   const [totalValue, setTotalValue] = useState<number>(0);
   const [totalGainLoss, setTotalGainLoss] = useState<number>(0);
   const [totalInvested, setTotalInvested] = useState<number>(0);
@@ -32,7 +28,6 @@ export default function Portfolio() {
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [importErrors, setImportErrors] = useState<string[]>([]);
   const [importLoading, setImportLoading] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   const [importRows, setImportRows] = useState<Array<{ id: number; ticker: string; shares: string; avg_price: string }>>([
     { id: 1, ticker: '', shares: '', avg_price: '' }
   ]);
@@ -172,45 +167,6 @@ export default function Portfolio() {
       setAnalysisError((error as Error).message || 'Failed to analyze portfolio.');
     } finally {
       setAnalysisLoading(false);
-    }
-  };
-
-  const handleAddHolding = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const newTicker = ticker.toUpperCase();
-    const newShares = parseFloat(shares);
-    const newPrice = parseFloat(avgPrice);
-
-    if (isNaN(newShares) || isNaN(newPrice)) {
-      alert('Please enter valid numbers for shares and price.');
-      return;
-    }
-
-    try {
-      setTickerError(null);
-      const validation = await api.validateTicker(newTicker);
-      if (!validation.data.valid) {
-        setTickerError(`Invalid ticker: ${newTicker}`);
-        return;
-      }
-
-      await api.addHolding({
-        ticker: newTicker,
-        shares: newShares,
-        avg_price: newPrice
-      });
-
-      await loadHoldings();
-      setAnalysisStale(true);
-      
-      setTicker('');
-      setShares('');
-      setAvgPrice('');
-      
-      alert('Holding added!');
-    } catch (error) {
-      console.error("Failed to save:", error);
-      alert('Error: ' + (error as Error).message);
     }
   };
 
@@ -377,159 +333,118 @@ export default function Portfolio() {
       )}
 
       <div className="card">
-        <h2>Add Holding</h2>
-        <form onSubmit={handleAddHolding}>
-          <div className="form-row">
-            <input
-              type="text"
-              placeholder="Ticker (e.g., AAPL)"
-              value={ticker}
-              onChange={(e) => {
-                setTicker(e.target.value);
-                setTickerError(null);
-              }}
-              required
-            />
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Shares"
-              value={shares}
-              onChange={(e) => setShares(e.target.value)}
-              required
-            />
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Average Price"
-              value={avgPrice}
-              onChange={(e) => setAvgPrice(e.target.value)}
-              required
-            />
-            <button type="submit" className="btn-primary">Add</button>
-          </div>
-          {tickerError && <div className="error">{tickerError}</div>}
-        </form>
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => setShowImport((prev) => !prev)}
-        >
-          {showImport ? 'Hide Advanced Import' : 'Advanced: Import Portfolio'}
-        </button>
-        {showImport && (
-          <div className="advanced-import">
-            <p className="muted">Add rows for each holding and import all at once.</p>
-            <table className="import-table">
-              <thead>
-                <tr>
-                  <th>Ticker</th>
-                  <th>Shares</th>
-                  <th>Avg Price</th>
-                  <th />
+        <h2>Add Holdings</h2>
+        <div className="advanced-import">
+          <p className="muted">Add rows for each holding and import all at once.</p>
+          <table className="import-table">
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Shares</th>
+                <th>Avg Price</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {importRows.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    <input
+                      type="text"
+                      value={row.ticker}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setImportRows((prev) => prev.map((item) => (
+                          item.id === row.id ? { ...item, ticker: value } : item
+                        )));
+                      }}
+                      placeholder="AAPL"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={row.shares}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setImportRows((prev) => prev.map((item) => (
+                          item.id === row.id ? { ...item, shares: value } : item
+                        )));
+                      }}
+                      placeholder="10"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={row.avg_price}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setImportRows((prev) => prev.map((item) => (
+                          item.id === row.id ? { ...item, avg_price: value } : item
+                        )));
+                      }}
+                      placeholder="150.25"
+                    />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn-delete"
+                      onClick={() => setImportRows((prev) => prev.filter((item) => item.id !== row.id))}
+                      disabled={importRows.length === 1}
+                    >
+                      Remove
+                    </button>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {importRows.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      <input
-                        type="text"
-                        value={row.ticker}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setImportRows((prev) => prev.map((item) => (
-                            item.id === row.id ? { ...item, ticker: value } : item
-                          )));
-                        }}
-                        placeholder="AAPL"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={row.shares}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setImportRows((prev) => prev.map((item) => (
-                            item.id === row.id ? { ...item, shares: value } : item
-                          )));
-                        }}
-                        placeholder="10"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={row.avg_price}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setImportRows((prev) => prev.map((item) => (
-                            item.id === row.id ? { ...item, avg_price: value } : item
-                          )));
-                        }}
-                        placeholder="150.25"
-                      />
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-delete"
-                        onClick={() => setImportRows((prev) => prev.filter((item) => item.id !== row.id))}
-                        disabled={importRows.length === 1}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </tbody>
+          </table>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setImportRows((prev) => ([
+              ...prev,
+              { id: Date.now(), ticker: '', shares: '', avg_price: '' }
+            ]))}
+          >
+            Add Row
+          </button>
+          <div className="form-row">
             <button
               type="button"
-              className="btn-secondary"
-              onClick={() => setImportRows((prev) => ([
-                ...prev,
-                { id: Date.now(), ticker: '', shares: '', avg_price: '' }
-              ]))}
+              className={`btn-secondary ${importMode === 'merge' ? 'btn-secondary-active' : ''}`}
+              onClick={() => setImportMode('merge')}
             >
-              Add Row
+              Merge Import
             </button>
-            <div className="form-row">
-              <button
-                type="button"
-                className={`btn-secondary ${importMode === 'merge' ? 'btn-secondary-active' : ''}`}
-                onClick={() => setImportMode('merge')}
-              >
-                Merge Import
-              </button>
-              <button
-                type="button"
-                className={`btn-secondary ${importMode === 'replace' ? 'btn-secondary-active' : ''}`}
-                onClick={() => setImportMode('replace')}
-              >
-                Replace Import
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleImportHoldings}
-                disabled={importLoading}
-              >
-                {importLoading ? 'Importing...' : 'Import Portfolio'}
-              </button>
-            </div>
-            {importErrors.length > 0 && (
-              <div className="error">
-                {importErrors.map((err) => (
-                  <div key={err}>{err}</div>
-                ))}
-              </div>
-            )}
+            <button
+              type="button"
+              className={`btn-secondary ${importMode === 'replace' ? 'btn-secondary-active' : ''}`}
+              onClick={() => setImportMode('replace')}
+            >
+              Replace Import
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={handleImportHoldings}
+              disabled={importLoading}
+            >
+              {importLoading ? 'Importing...' : 'Import Portfolio'}
+            </button>
           </div>
-        )}
+          {importErrors.length > 0 && (
+            <div className="error">
+              {importErrors.map((err) => (
+                <div key={err}>{err}</div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="card">

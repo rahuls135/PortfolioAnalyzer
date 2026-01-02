@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from datetime import datetime, timezone, timedelta, time
-from typing import List, Optional
+from typing import List, Optional, Set
 import os
 import requests
 from zoneinfo import ZoneInfo
@@ -162,7 +162,40 @@ def _compute_risk_tolerance(age: int, income: float, retirement_years: int, obli
         return "aggressive"
     return "moderate"
 
+_TICKER_UNIVERSE: Set[str] | None = None
+_TICKER_UNIVERSE_MTIME: float | None = None
+
+def _load_ticker_universe() -> Set[str] | None:
+    global _TICKER_UNIVERSE, _TICKER_UNIVERSE_MTIME
+    path = os.getenv("TICKER_UNIVERSE_PATH")
+    if not path:
+        return None
+    try:
+        stat = os.stat(path)
+    except FileNotFoundError:
+        return None
+    if _TICKER_UNIVERSE is not None and _TICKER_UNIVERSE_MTIME == stat.st_mtime:
+        return _TICKER_UNIVERSE
+    tickers: Set[str] = set()
+    with open(path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            cleaned = line.strip().upper()
+            if not cleaned or cleaned.startswith("#"):
+                continue
+            tickers.add(cleaned)
+    _TICKER_UNIVERSE = tickers
+    _TICKER_UNIVERSE_MTIME = stat.st_mtime
+    return _TICKER_UNIVERSE
+
+def _ticker_universe_enforced() -> bool:
+    return os.getenv("TICKER_UNIVERSE_ENFORCE", "false").lower() == "true"
+
 def _validate_ticker(ticker: str, db: Session) -> bool:
+    universe = _load_ticker_universe()
+    if universe is not None:
+        if ticker not in universe:
+            return False
+        return True
     stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
     if stock and stock.current_price is not None:
         return True
