@@ -9,6 +9,7 @@ import threading
 import os
 import requests
 import re
+import json
 from zoneinfo import ZoneInfo
 from database import get_db, engine, Base
 import models
@@ -923,6 +924,8 @@ def get_earnings_transcript(
             raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
 
         transcript_text = res.get("transcript", "")
+        if isinstance(transcript_text, dict):
+            transcript_text = json.dumps(transcript_text)
         if not transcript_text:
             continue
 
