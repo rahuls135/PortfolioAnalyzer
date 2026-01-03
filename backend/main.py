@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from datetime import datetime, timezone, timedelta, time
 from typing import List, Optional, Set
+import time
+import threading
 import os
 import requests
 import re
@@ -170,6 +172,18 @@ def _compute_risk_tolerance(age: int, income: float, retirement_years: int, obli
         return "aggressive"
     return "moderate"
 
+_AV_LOCK = threading.Lock()
+_AV_LAST_CALL = 0.0
+
+def _av_throttle(min_interval_seconds: float = 1.1) -> None:
+    global _AV_LAST_CALL
+    with _AV_LOCK:
+        now = time.monotonic()
+        wait_for = (_AV_LAST_CALL + min_interval_seconds) - now
+        if wait_for > 0:
+            time.sleep(wait_for)
+        _AV_LAST_CALL = time.monotonic()
+
 _TICKER_UNIVERSE: Set[str] | None = None
 _TICKER_UNIVERSE_MTIME: float | None = None
 
@@ -212,6 +226,7 @@ def _validate_ticker(ticker: str, db: Session) -> bool:
     if not api_key:
         raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
 
+    _av_throttle()
     price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
     price_res = requests.get(price_url).json()
     print("B - Invoking AV")
@@ -234,6 +249,7 @@ def _fetch_overview_fields(ticker: str) -> dict:
     api_key = os.getenv("ALPHA_VANTAGE_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
+    _av_throttle()
     overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
     overview_res = requests.get(overview_url).json()
     print("C - Invoking AV")
@@ -486,6 +502,7 @@ def get_stock_data(
     
     # 2. Cache expired or missing: Fetch Price
     print(f"Alpha Vantage price fetch for {ticker}")
+    _av_throttle()
     price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
     price_res = requests.get(price_url).json()
     print("A - Invoking AV")
@@ -893,6 +910,7 @@ def get_earnings_transcript(
         if not api_key:
             raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
 
+        _av_throttle()
         url = f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={cleaned}&quarter={candidate}&apikey={api_key}"
         res = requests.get(url).json()
         print("D - Invoking AV")

@@ -309,16 +309,6 @@ export default function Portfolio() {
 
     setImportLoading(true);
     try {
-      const uniqueTickers = Array.from(new Set(preview.map((item) => item.ticker)));
-      for (const ticker of uniqueTickers) {
-        const validation = await api.validateTicker(ticker);
-        if (!validation.data.valid) {
-          setImportErrors([`Invalid ticker: ${ticker}`]);
-          setImportLoading(false);
-          return;
-        }
-      }
-
       await api.bulkUpsertHoldings({
         mode: importMode,
         holdings: preview.map(({ ticker, shares, avg_price }) => ({
