@@ -488,7 +488,7 @@ def get_stock_data(
     
     # 1. Check cache (24-hour rule)
     stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
-    if stock and stock.last_updated:
+    if stock and stock.last_updated and stock.current_price is not None:
         # Normalize timezone for comparison
         last_updated = stock.last_updated.replace(tzinfo=timezone.utc)
         now_utc = datetime.now(timezone.utc)
