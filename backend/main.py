@@ -286,10 +286,12 @@ def _get_asset_type(ticker: str, db: Session) -> str:
         db.commit()
     return asset_type
 
-def _summarize_transcript(text: str, max_sentences: int = 4, max_chars: int = 800) -> str:
+def _summarize_transcript(text: str | list, max_sentences: int = 4, max_chars: int = 800) -> str:
     if not text:
         return ""
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+    if isinstance(text, list):
+        text = " ".join(str(item) for item in text if item)
+    sentences = re.split(r'(?<=[.!?])\s+', str(text).strip())
     summary = " ".join(sentences[:max_sentences]).strip()
     if len(summary) > max_chars:
         summary = summary[:max_chars].rstrip() + "..."
@@ -912,6 +914,7 @@ def get_earnings_transcript(
 
         _av_throttle()
         url = f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={cleaned}&quarter={candidate}&apikey={api_key}"
+        print("transcript url:", url)
         res = requests.get(url).json()
         print("D - Invoking AV")
 
