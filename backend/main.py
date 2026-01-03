@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from datetime import datetime, timezone, timedelta, time
 from typing import List, Optional, Set
-import time
+import time as time_module
 import threading
 import os
 import requests
@@ -178,11 +178,11 @@ _AV_LAST_CALL = 0.0
 def _av_throttle(min_interval_seconds: float = 1.1) -> None:
     global _AV_LAST_CALL
     with _AV_LOCK:
-        now = time.monotonic()
+        now = time_module.monotonic()
         wait_for = (_AV_LAST_CALL + min_interval_seconds) - now
         if wait_for > 0:
-            time.sleep(wait_for)
-        _AV_LAST_CALL = time.monotonic()
+            time_module.sleep(wait_for)
+        _AV_LAST_CALL = time_module.monotonic()
 
 _TICKER_UNIVERSE: Set[str] | None = None
 _TICKER_UNIVERSE_MTIME: float | None = None
