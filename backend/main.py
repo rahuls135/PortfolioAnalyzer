@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 from database import get_db, engine, Base
 import models
 from auth import get_current_user, get_supabase_user_id
+from services import get_transcript_provider
 
 app = FastAPI()
 
@@ -954,6 +955,11 @@ def get_earnings_transcript(
         attempts.append(current_quarter)
         current_quarter = previous_quarter(current_quarter)
 
+    try:
+        provider = get_transcript_provider(_av_throttle)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
     for candidate in attempts:
         existing = db.query(models.EarningsTranscript).filter(
             models.EarningsTranscript.ticker == cleaned,
@@ -967,21 +973,12 @@ def get_earnings_transcript(
                 "fetched_at": existing.fetched_at
             }
 
-        api_key = os.getenv("ALPHA_VANTAGE_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
-
-        _av_throttle()
-        url = f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={cleaned}&quarter={candidate}&apikey={api_key}"
-        print("transcript url:", url)
-        res = requests.get(url).json()
+        try:
+            transcript_result = provider.get_transcript(cleaned, candidate)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=429, detail=str(exc))
         print("D - Invoking AV")
-
-        if res.get("Note") or res.get("Information"):
-            message = res.get("Note") or res.get("Information")
-            raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
-
-        transcript_text = _normalize_transcript_text(res.get("transcript", ""))
+        transcript_text = _normalize_transcript_text(transcript_result.transcript)
         if not transcript_text:
             continue
 

@@ -169,12 +169,18 @@ export default function Portfolio() {
       const response = await api.getCachedAnalysis();
       setCachedAnalysisText(response.data.ai_analysis);
       setCachedAnalysisMeta({ last_analysis_at: response.data.analysis_meta.last_analysis_at });
+      setCooldownRemainingSeconds(response.data.analysis_meta.cooldown_remaining_seconds);
+      setNextAvailableAt(response.data.analysis_meta.next_available_at);
+      setLastAnalysisAt(response.data.analysis_meta.last_analysis_at);
       setCachedMetrics(response.data.metrics ?? null);
       setCachedTranscripts(response.data.transcripts ?? {});
       setCachedTranscriptsQuarter(response.data.transcripts_quarter ?? null);
     } catch (error) {
       setCachedAnalysisText(null);
       setCachedAnalysisMeta(null);
+      setCooldownRemainingSeconds(0);
+      setNextAvailableAt(null);
+      setLastAnalysisAt(null);
       setCachedMetrics(null);
       setCachedTranscripts({});
       setCachedTranscriptsQuarter(null);
