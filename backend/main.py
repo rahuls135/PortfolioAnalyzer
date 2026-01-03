@@ -287,12 +287,20 @@ def _get_asset_type(ticker: str, db: Session) -> str:
         db.commit()
     return asset_type
 
-def _summarize_transcript(text: str | list, max_sentences: int = 4, max_chars: int = 800) -> str:
+def _normalize_transcript_text(text: str | list | dict) -> str:
     if not text:
         return ""
+    if isinstance(text, dict):
+        return json.dumps(text)
     if isinstance(text, list):
-        text = " ".join(str(item) for item in text if item)
-    sentences = re.split(r'(?<=[.!?])\s+', str(text).strip())
+        return " ".join(str(item) for item in text if item)
+    return str(text)
+
+def _summarize_transcript(text: str | list | dict, max_sentences: int = 4, max_chars: int = 800) -> str:
+    if not text:
+        return ""
+    normalized = _normalize_transcript_text(text)
+    sentences = re.split(r'(?<=[.!?])\s+', normalized.strip())
     summary = " ".join(sentences[:max_sentences]).strip()
     if len(summary) > max_chars:
         summary = summary[:max_chars].rstrip() + "..."
@@ -923,9 +931,7 @@ def get_earnings_transcript(
             message = res.get("Note") or res.get("Information")
             raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
 
-        transcript_text = res.get("transcript", "")
-        if isinstance(transcript_text, dict):
-            transcript_text = json.dumps(transcript_text)
+        transcript_text = _normalize_transcript_text(res.get("transcript", ""))
         if not transcript_text:
             continue
 
