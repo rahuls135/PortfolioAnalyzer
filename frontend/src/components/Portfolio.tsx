@@ -26,6 +26,9 @@ export default function Portfolio() {
   const [cachedAnalysisMeta, setCachedAnalysisMeta] = useState<{
     last_analysis_at: string | null;
   } | null>(null);
+  const [cachedMetrics, setCachedMetrics] = useState<PortfolioAnalysis['metrics'] | null>(null);
+  const [cachedTranscripts, setCachedTranscripts] = useState<Record<string, string>>({});
+  const [cachedTranscriptsQuarter, setCachedTranscriptsQuarter] = useState<string | null>(null);
   const [transcriptSummaries, setTranscriptSummaries] = useState<Record<string, string>>({});
   const [transcriptsLoading, setTranscriptsLoading] = useState(false);
   const [transcriptsError, setTranscriptsError] = useState<string | null>(null);
@@ -166,9 +169,15 @@ export default function Portfolio() {
       const response = await api.getCachedAnalysis();
       setCachedAnalysisText(response.data.ai_analysis);
       setCachedAnalysisMeta({ last_analysis_at: response.data.analysis_meta.last_analysis_at });
+      setCachedMetrics(response.data.metrics ?? null);
+      setCachedTranscripts(response.data.transcripts ?? {});
+      setCachedTranscriptsQuarter(response.data.transcripts_quarter ?? null);
     } catch (error) {
       setCachedAnalysisText(null);
       setCachedAnalysisMeta(null);
+      setCachedMetrics(null);
+      setCachedTranscripts({});
+      setCachedTranscriptsQuarter(null);
     }
   };
 
@@ -182,6 +191,7 @@ export default function Portfolio() {
       setPortfolioAnalysis(response.data);
       setCachedAnalysisText(response.data.ai_analysis);
       setCachedAnalysisMeta({ last_analysis_at: response.data.analysis_meta.last_analysis_at });
+      setCachedMetrics(response.data.metrics);
       setAnalysisStale(false);
       setCooldownRemainingSeconds(response.data.analysis_meta.cooldown_remaining_seconds);
       setNextAvailableAt(response.data.analysis_meta.next_available_at);
@@ -221,6 +231,11 @@ export default function Portfolio() {
           }
         });
         setTranscriptSummaries(summaries);
+        setCachedTranscripts(summaries);
+        setCachedTranscriptsQuarter(quarter);
+        if (Object.keys(summaries).length > 0) {
+          api.cacheTranscriptSummaries(quarter, summaries).catch(() => null);
+        }
         if (results.some((result) => result.status === 'rejected')) {
           setTranscriptsError('Some transcripts could not be loaded.');
         }
@@ -670,7 +685,7 @@ export default function Portfolio() {
 
       {portfolioAnalysis && (
         <>
-          <AnalysisMetrics portfolioAnalysis={portfolioAnalysis} />
+          <AnalysisMetrics metrics={portfolioAnalysis.metrics} />
           <Analysis portfolioAnalysis={portfolioAnalysis} />
           <div className="card">
             <h2>Earnings Call Summaries</h2>
@@ -689,17 +704,37 @@ export default function Portfolio() {
         </>
       )}
       {!portfolioAnalysis && cachedAnalysisText && (
-        <div className="card">
-          <h2>AI Recommendations</h2>
-          {cachedAnalysisMeta?.last_analysis_at && (
-            <span className="muted">
-              Last analysis: {new Date(cachedAnalysisMeta.last_analysis_at).toLocaleString()}
-            </span>
+        <>
+          {cachedMetrics && (
+            <AnalysisMetrics metrics={cachedMetrics} />
           )}
-          <div className="ai-analysis">
-            {cachedAnalysisText}
+          <div className="card">
+            <h2>AI Recommendations</h2>
+            {cachedAnalysisMeta?.last_analysis_at && (
+              <span className="muted">
+                Last analysis: {new Date(cachedAnalysisMeta.last_analysis_at).toLocaleString()}
+              </span>
+            )}
+            <div className="ai-analysis">
+              {cachedAnalysisText}
+            </div>
           </div>
-        </div>
+          <div className="card">
+            <h2>Earnings Call Summaries</h2>
+            {cachedTranscriptsQuarter && (
+              <span className="muted">Quarter: {cachedTranscriptsQuarter}</span>
+            )}
+            {Object.keys(cachedTranscripts).length === 0 && (
+              <span className="muted">No summaries available yet.</span>
+            )}
+            {Object.entries(cachedTranscripts).map(([ticker, summary]) => (
+              <div key={ticker} className="transcript-summary">
+                <strong>{ticker}</strong>
+                <p>{summary}</p>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

@@ -1,11 +1,10 @@
 import type { PortfolioAnalysis } from '../api';
 
 interface AnalysisMetricsProps {
-  portfolioAnalysis: PortfolioAnalysis;
+  metrics: PortfolioAnalysis['metrics'];
 }
 
-export default function AnalysisMetrics({ portfolioAnalysis }: AnalysisMetricsProps) {
-  const { metrics } = portfolioAnalysis;
+export default function AnalysisMetrics({ metrics }: AnalysisMetricsProps) {
   const totalSectorPct = metrics.sector_allocation.reduce((sum, item) => sum + item.pct, 0);
   let current = 0;
   const pieStops = metrics.sector_allocation.map((item, index) => {

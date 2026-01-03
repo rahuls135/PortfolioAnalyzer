@@ -126,6 +126,9 @@ export interface CachedAnalysis {
     next_available_at: string | null;
     cooldown_remaining_seconds: number;
   };
+  metrics?: PortfolioAnalysis['metrics'];
+  transcripts?: Record<string, string>;
+  transcripts_quarter?: string | null;
 }
 
 export const api = {
@@ -169,6 +172,9 @@ export const api = {
 
   getCachedAnalysis: () =>
     apiClient.get<CachedAnalysis>(`/api/analysis/cached`),
+
+  cacheTranscriptSummaries: (quarter: string, summaries: Record<string, string>) =>
+    apiClient.post(`/api/analysis/cached/transcripts`, { quarter, summaries }),
   
   getStockPrice: (ticker: string) => 
     apiClient.get(`/api/stocks/${ticker}`)

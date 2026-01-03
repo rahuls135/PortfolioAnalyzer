@@ -100,6 +100,13 @@ class EarningsTranscriptResponse(BaseModel):
 class AnalysisCacheResponse(BaseModel):
     ai_analysis: str
     analysis_meta: dict
+    metrics: Optional[dict] = None
+    transcripts: Optional[dict] = None
+    transcripts_quarter: Optional[str] = None
+
+class AnalysisTranscriptCache(BaseModel):
+    quarter: str
+    summaries: dict
 
 @app.get("/")
 def read_root():
@@ -791,16 +798,23 @@ Risk Assessment: Your {current_user.risk_tolerance} risk tolerance ({risk_mode} 
     concentration_top3 = sum(h["current_value"] for h in sorted_holdings[:3]) / total_value * 100 if total_value else 0
     diversification_score = max(0, min(100, 100 - concentration_top3))
 
+    metrics_payload = {
+        "sector_allocation": sector_allocation,
+        "top_holdings": top_holdings,
+        "concentration_top3_pct": concentration_top3,
+        "diversification_score": diversification_score
+    }
+    if not profile:
+        profile = models.UserProfile(user_id=current_user.id)
+        db.add(profile)
+    profile.portfolio_metrics = metrics_payload
+    db.commit()
+
     return {
         "total_value": total_value,
         "holdings": portfolio_summary,
         "ai_analysis": ai_analysis,
-        "metrics": {
-            "sector_allocation": sector_allocation,
-            "top_holdings": top_holdings,
-            "concentration_top3_pct": concentration_top3,
-            "diversification_score": diversification_score
-        },
+        "metrics": metrics_payload,
         "user_profile": {
             "age": current_user.age,
             "risk_tolerance": current_user.risk_tolerance,
@@ -822,8 +836,26 @@ def get_cached_analysis(
     now_utc = datetime.now(timezone.utc)
     return {
         "ai_analysis": profile.portfolio_analysis,
-        "analysis_meta": _analysis_meta(profile, now_utc, cached=True)
+        "analysis_meta": _analysis_meta(profile, now_utc, cached=True),
+        "metrics": profile.portfolio_metrics,
+        "transcripts": profile.portfolio_transcripts,
+        "transcripts_quarter": profile.portfolio_transcripts_quarter
     }
+
+@app.post("/api/analysis/cached/transcripts")
+def cache_transcripts(
+    payload: AnalysisTranscriptCache,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
+    if not profile:
+        profile = models.UserProfile(user_id=current_user.id)
+        db.add(profile)
+    profile.portfolio_transcripts = payload.summaries
+    profile.portfolio_transcripts_quarter = payload.quarter
+    db.commit()
+    return {"status": "ok"}
 
 @app.get("/api/users/me", response_model=UserResponse)
 def get_my_profile(
