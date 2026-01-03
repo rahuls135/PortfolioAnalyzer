@@ -214,7 +214,8 @@ def _validate_ticker(ticker: str, db: Session) -> bool:
 
     price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
     price_res = requests.get(price_url).json()
-
+    print("B - Invoking AV")
+    print(price_res)
     if price_res.get("Note") or price_res.get("Information"):
         print("B - IN Here 429 Error!")
         raise HTTPException(status_code=429, detail="Alpha Vantage rate limit reached")
@@ -235,6 +236,7 @@ def _fetch_overview_fields(ticker: str) -> dict:
         raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
     overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
     overview_res = requests.get(overview_url).json()
+    print("C - Invoking AV")
     if overview_res.get("Note") or overview_res.get("Information"):
         message = overview_res.get("Note") or overview_res.get("Information")
         raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
@@ -486,6 +488,7 @@ def get_stock_data(
     print(f"Alpha Vantage price fetch for {ticker}")
     price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
     price_res = requests.get(price_url).json()
+    print("A - Invoking AV")
     
     if price_res.get("Note") or price_res.get("Information"):
         message = price_res.get("Note") or price_res.get("Information")
@@ -892,6 +895,8 @@ def get_earnings_transcript(
 
         url = f"https://www.alphavantage.co/query?function=EARNINGS_CALL_TRANSCRIPT&symbol={cleaned}&quarter={candidate}&apikey={api_key}"
         res = requests.get(url).json()
+        print("D - Invoking AV")
+
         if res.get("Note") or res.get("Information"):
             message = res.get("Note") or res.get("Information")
             raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
