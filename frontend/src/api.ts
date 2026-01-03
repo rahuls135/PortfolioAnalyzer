@@ -118,6 +118,16 @@ export interface PortfolioAnalysis {
   };
 }
 
+export interface CachedAnalysis {
+  ai_analysis: string;
+  analysis_meta: {
+    cached: boolean;
+    last_analysis_at: string | null;
+    next_available_at: string | null;
+    cooldown_remaining_seconds: number;
+  };
+}
+
 export const api = {
   createUser: (userData: UserCreate) => 
     apiClient.post<User>(`/api/users`, userData),
@@ -156,6 +166,9 @@ export const api = {
   
   analyzePortfolio: () => 
     apiClient.get<PortfolioAnalysis>(`/api/analysis`),
+
+  getCachedAnalysis: () =>
+    apiClient.get<CachedAnalysis>(`/api/analysis/cached`),
   
   getStockPrice: (ticker: string) => 
     apiClient.get(`/api/stocks/${ticker}`)

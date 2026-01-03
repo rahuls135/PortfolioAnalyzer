@@ -97,6 +97,10 @@ class EarningsTranscriptResponse(BaseModel):
     summary: str
     fetched_at: Optional[datetime] = None
 
+class AnalysisCacheResponse(BaseModel):
+    ai_analysis: str
+    analysis_meta: dict
+
 @app.get("/")
 def read_root():
     return {"message": "Portfolio Analyzer API", "status": "running"}
@@ -805,6 +809,20 @@ Risk Assessment: Your {current_user.risk_tolerance} risk tolerance ({risk_mode} 
             "obligations_amount": current_user.obligations_amount
         },
         "analysis_meta": _analysis_meta(profile, now_utc, cached=cached)
+    }
+
+@app.get("/api/analysis/cached", response_model=AnalysisCacheResponse)
+def get_cached_analysis(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
+    if not profile or not profile.portfolio_analysis:
+        raise HTTPException(status_code=404, detail="No cached analysis available")
+    now_utc = datetime.now(timezone.utc)
+    return {
+        "ai_analysis": profile.portfolio_analysis,
+        "analysis_meta": _analysis_meta(profile, now_utc, cached=True)
     }
 
 @app.get("/api/users/me", response_model=UserResponse)

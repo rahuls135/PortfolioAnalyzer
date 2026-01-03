@@ -22,6 +22,10 @@ export default function Portfolio() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [analysisStale, setAnalysisStale] = useState(false);
+  const [cachedAnalysisText, setCachedAnalysisText] = useState<string | null>(null);
+  const [cachedAnalysisMeta, setCachedAnalysisMeta] = useState<{
+    last_analysis_at: string | null;
+  } | null>(null);
   const [transcriptSummaries, setTranscriptSummaries] = useState<Record<string, string>>({});
   const [transcriptsLoading, setTranscriptsLoading] = useState(false);
   const [transcriptsError, setTranscriptsError] = useState<string | null>(null);
@@ -44,6 +48,7 @@ export default function Portfolio() {
   useEffect(() => {
     const init = async () => {
       await loadHoldings();
+      await loadCachedAnalysis();
     };
     init();
   }, []);
@@ -156,6 +161,17 @@ export default function Portfolio() {
     }
   };
 
+  const loadCachedAnalysis = async () => {
+    try {
+      const response = await api.getCachedAnalysis();
+      setCachedAnalysisText(response.data.ai_analysis);
+      setCachedAnalysisMeta({ last_analysis_at: response.data.analysis_meta.last_analysis_at });
+    } catch (error) {
+      setCachedAnalysisText(null);
+      setCachedAnalysisMeta(null);
+    }
+  };
+
   const loadAnalysis = async () => {
     setAnalysisLoading(true);
     setAnalysisError(null);
@@ -164,6 +180,8 @@ export default function Portfolio() {
     try {
       const response = await api.analyzePortfolio();
       setPortfolioAnalysis(response.data);
+      setCachedAnalysisText(response.data.ai_analysis);
+      setCachedAnalysisMeta({ last_analysis_at: response.data.analysis_meta.last_analysis_at });
       setAnalysisStale(false);
       setCooldownRemainingSeconds(response.data.analysis_meta.cooldown_remaining_seconds);
       setNextAvailableAt(response.data.analysis_meta.next_available_at);
@@ -669,6 +687,19 @@ export default function Portfolio() {
             ))}
           </div>
         </>
+      )}
+      {!portfolioAnalysis && cachedAnalysisText && (
+        <div className="card">
+          <h2>AI Recommendations</h2>
+          {cachedAnalysisMeta?.last_analysis_at && (
+            <span className="muted">
+              Last analysis: {new Date(cachedAnalysisMeta.last_analysis_at).toLocaleString()}
+            </span>
+          )}
+          <div className="ai-analysis">
+            {cachedAnalysisText}
+          </div>
+        </div>
       )}
     </div>
   );
