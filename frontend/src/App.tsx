@@ -292,7 +292,7 @@ function App() {
                       || Number.isNaN(parsedIncome)
                       || Number.isNaN(parsedRetirementYears)
                     ) {
-                      setSettingsError('Enter age, income, and retirement years to get an AI recommendation.');
+                      setSettingsError('Enter age, income, and retirement years to get an AI insight.');
                       return;
                     }
 
@@ -306,10 +306,10 @@ function App() {
                     setSettingsRiskAssessmentMode('ai');
                   }}
                 >
-                  Use AI Recommendation
+                  Use AI Insights
                 </button>
                 <span className="muted">
-                  Mode: {settingsRiskAssessmentMode === 'ai' ? 'AI recommended' : 'Manual'}
+                  Mode: {settingsRiskAssessmentMode === 'ai' ? 'AI insights' : 'Manual'}
                 </span>
               </div>
 

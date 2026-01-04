@@ -7,7 +7,7 @@ interface AnalysisProps {
 export default function Analysis({ portfolioAnalysis }: AnalysisProps) {
   return (
     <div className="card">
-      <h2>AI Recommendations</h2>
+      <h2>AI Insights</h2>
       <div className="ai-analysis">
         {portfolioAnalysis.ai_analysis}
       </div>

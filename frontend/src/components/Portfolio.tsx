@@ -715,7 +715,7 @@ export default function Portfolio() {
             <AnalysisMetrics metrics={cachedMetrics} />
           )}
           <div className="card">
-            <h2>AI Recommendations</h2>
+            <h2>AI Insights</h2>
             {cachedAnalysisMeta?.last_analysis_at && (
               <span className="muted">
                 Last analysis: {new Date(cachedAnalysisMeta.last_analysis_at).toLocaleString()}

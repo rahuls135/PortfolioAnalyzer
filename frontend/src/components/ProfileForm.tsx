@@ -21,7 +21,7 @@ export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
     const parsedObligations = parseFloat(obligationsAmount || '0');
 
     if (Number.isNaN(parsedAge) || Number.isNaN(parsedIncome) || Number.isNaN(parsedRetirementYears)) {
-      alert('Enter age, income, and retirement years to get an AI recommendation.');
+      alert('Enter age, income, and retirement years to get AI Insights.');
       return;
     }
 
@@ -124,10 +124,10 @@ export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
         </button>
         <div className="risk-mode-bar">
           <button type="button" className="btn-secondary" onClick={handleAiRecommendation}>
-            Use AI Recommendation
+            Use AI Insights
           </button>
           <span className="muted">
-            Mode: {riskAssessmentMode === 'ai' ? 'AI recommended' : 'Manual'}
+            Mode: {riskAssessmentMode === 'ai' ? 'AI insights' : 'Manual'}
           </span>
         </div>
       </form>
