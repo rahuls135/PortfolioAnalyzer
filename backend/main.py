@@ -119,7 +119,7 @@ def health_check():
 MARKET_TZ = ZoneInfo("America/New_York")
 MARKET_OPEN = time(9, 30)
 MARKET_CLOSE = time(16, 0)
-ANALYSIS_COOLDOWN_SECONDS = 24 * 60 * 60
+ANALYSIS_COOLDOWN_SECONDS = int(os.getenv("ANALYSIS_COOLDOWN_SECONDS", str(24 * 60 * 60)))
 
 def _last_market_close(now_et: datetime) -> datetime:
     if now_et.weekday() >= 5:
