@@ -5,6 +5,8 @@ from .providers import (
     EarningsTranscript,
     AlphaVantageTranscriptProvider,
     get_transcript_provider,
+    AlphaVantageMarketDataProvider,
+    get_market_data_provider,
 )
 from .repositories import (
     HoldingsRepository,
@@ -15,7 +17,8 @@ from .repositories import (
     TranscriptRecord,
 )
 from .transcripts import TranscriptService
-from .sqlalchemy_repositories import SqlAlchemyTranscriptRepository
+from .market_data import MarketDataService
+from .sqlalchemy_repositories import SqlAlchemyTranscriptRepository, SqlAlchemyStockDataRepository
 
 __all__ = [
     "MarketDataProvider",
@@ -24,6 +27,8 @@ __all__ = [
     "EarningsTranscript",
     "AlphaVantageTranscriptProvider",
     "get_transcript_provider",
+    "AlphaVantageMarketDataProvider",
+    "get_market_data_provider",
     "HoldingsRepository",
     "StockDataRepository",
     "HoldingRecord",
@@ -31,5 +36,7 @@ __all__ = [
     "TranscriptRepository",
     "TranscriptRecord",
     "TranscriptService",
+    "MarketDataService",
     "SqlAlchemyTranscriptRepository",
+    "SqlAlchemyStockDataRepository",
 ]

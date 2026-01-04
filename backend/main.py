@@ -7,13 +7,19 @@ from typing import List, Optional, Set
 import time as time_module
 import threading
 import os
-import requests
 import re
 from zoneinfo import ZoneInfo
 from database import get_db, engine, Base
 import models
 from auth import get_current_user, get_supabase_user_id
-from services import get_transcript_provider, TranscriptService, SqlAlchemyTranscriptRepository
+from services import (
+    get_transcript_provider,
+    get_market_data_provider,
+    TranscriptService,
+    MarketDataService,
+    SqlAlchemyTranscriptRepository,
+    SqlAlchemyStockDataRepository,
+)
 
 app = FastAPI()
 
@@ -230,73 +236,31 @@ def _validate_ticker(ticker: str, db: Session) -> bool:
         if ticker not in universe:
             return False
         return True
-    stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
-    if stock and stock.current_price is not None:
-        return True
-
-    api_key = os.getenv("ALPHA_VANTAGE_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
-
-    _av_throttle()
-    price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
-    price_res = requests.get(price_url).json()
-    print("B - Invoking AV")
-    print(price_res)
-    if price_res.get("Note") or price_res.get("Information"):
-        print("B - IN Here 429 Error!")
-        raise HTTPException(status_code=429, detail="Alpha Vantage rate limit reached")
-
-    quote = price_res.get("Global Quote") or {}
-    price = quote.get("05. price")
-    if not price:
-        return False
+    repo = SqlAlchemyStockDataRepository(db)
     try:
-        float(price)
-    except (TypeError, ValueError):
-        return False
-    return True
-
-def _fetch_overview_fields(ticker: str) -> dict:
-    api_key = os.getenv("ALPHA_VANTAGE_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
-    _av_throttle()
-    overview_url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={ticker}&apikey={api_key}"
-    overview_res = requests.get(overview_url).json()
-    print("C - Invoking AV")
-    if overview_res.get("Note") or overview_res.get("Information"):
-        message = overview_res.get("Note") or overview_res.get("Information")
-        raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
-    return {
-        "sector": overview_res.get("Sector", "Unknown"),
-        "asset_type": overview_res.get("AssetType", "Unknown")
-    }
+        provider = get_market_data_provider(_av_throttle)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    service = MarketDataService(provider, repo)
+    try:
+        return service.validate_ticker(ticker)
+    except RuntimeError as exc:
+        message = str(exc)
+        if "Stock price not found" in message:
+            return False
+        raise HTTPException(status_code=429, detail=message)
 
 def _get_asset_type(ticker: str, db: Session) -> str:
-    stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
-    if stock and stock.asset_type and stock.asset_type != "Unknown":
-        return stock.asset_type
-    overview = _fetch_overview_fields(ticker)
-    asset_type = overview.get("asset_type", "Unknown")
-    sector = overview.get("sector", "Unknown")
-    if stock:
-        if asset_type != "Unknown":
-            stock.asset_type = asset_type
-        if sector != "Unknown" and (not stock.sector or stock.sector == "Unknown"):
-            stock.sector = sector
-        db.commit()
-        db.refresh(stock)
-    else:
-        stock = models.StockData(
-            ticker=ticker,
-            sector=sector,
-            asset_type=asset_type,
-            last_updated=datetime.now(timezone.utc)
-        )
-        db.add(stock)
-        db.commit()
-    return asset_type
+    repo = SqlAlchemyStockDataRepository(db)
+    try:
+        provider = get_market_data_provider(_av_throttle)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    service = MarketDataService(provider, repo)
+    try:
+        return service.get_asset_type(ticker)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
 
 def _normalize_bulk_holdings(holdings: List[HoldingCreate]) -> List[HoldingCreate]:
     grouped: dict[str, HoldingCreate] = {}
@@ -485,77 +449,31 @@ def get_stock_data(
     ticker = ticker.strip().upper()
     if not ticker or not ticker.isalnum() or len(ticker) > 10:
         raise HTTPException(status_code=400, detail="Invalid ticker format")
-    api_key = os.getenv("ALPHA_VANTAGE_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="Alpha Vantage API key not configured")
-    
-    # 1. Check cache (24-hour rule)
-    stock = db.query(models.StockData).filter(models.StockData.ticker == ticker).first()
-    if stock and stock.last_updated and stock.current_price is not None:
-        # Normalize timezone for comparison
-        last_updated = stock.last_updated.replace(tzinfo=timezone.utc)
-        now_utc = datetime.now(timezone.utc)
-        if (now_utc - last_updated).total_seconds() < 86400 or _market_closed_cache_valid(last_updated, now_utc):
-            return {
-                "ticker": stock.ticker,
-                "current_price": stock.current_price,
-                "sector": stock.sector or "Unknown",
-                "cached": True
-            }
-    
-    # 2. Cache expired or missing: Fetch Price
-    print(f"Alpha Vantage price fetch for {ticker}")
-    _av_throttle()
-    price_url = f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}"
-    price_res = requests.get(price_url).json()
-    print("A - Invoking AV")
-    
-    if price_res.get("Note") or price_res.get("Information"):
-        message = price_res.get("Note") or price_res.get("Information")
-        print("A - IN Here 429 Error!")
-        raise HTTPException(status_code=429, detail=f"Alpha Vantage response: {message}")
-    if "Global Quote" not in price_res or not price_res["Global Quote"]:
-        raise HTTPException(status_code=404, detail="Stock price not found")
-    
-    current_price = float(price_res["Global Quote"]["05. price"])
+    try:
+        provider = get_market_data_provider(_av_throttle)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    repo = SqlAlchemyStockDataRepository(db)
+    service = MarketDataService(provider, repo)
+    now_utc = datetime.now(timezone.utc)
 
-    # 3. Fetch Sector/Metadata (Alpha Vantage OVERVIEW)
-    # Note: Free tier has rate limits, so we only do this if sector is missing
-    sector = "Unknown"
-    asset_type = "Unknown"
-    if not stock or not stock.sector or stock.sector == "Unknown" or not stock.asset_type or stock.asset_type == "Unknown":
-        print(f"Alpha Vantage overview fetch for {ticker}")
-        overview = _fetch_overview_fields(ticker)
-        sector = overview.get("sector", "Unknown")
-        asset_type = overview.get("asset_type", "Unknown")
+    def _cache_valid(last_updated: datetime, now_time: datetime) -> bool:
+        return (now_time - last_updated).total_seconds() < 86400 or _market_closed_cache_valid(last_updated, now_time)
 
-    # 4. Update Database
-    if stock:
-        stock.current_price = current_price
-        if sector != "Unknown":
-            stock.sector = sector
-        if asset_type != "Unknown":
-            stock.asset_type = asset_type
-        stock.last_updated = datetime.now(timezone.utc)
-    else:
-        stock = models.StockData(
-            ticker=ticker,
-            current_price=current_price,
-            sector=sector,
-            asset_type=asset_type,
-            last_updated=datetime.now(timezone.utc)
-        )
-        db.add(stock)
-    
-    db.commit()
-    db.refresh(stock)
-    
+    try:
+        quote, cached = service.get_quote(ticker, now_utc, _cache_valid)
+    except RuntimeError as exc:
+        message = str(exc)
+        if "Stock price not found" in message:
+            raise HTTPException(status_code=404, detail="Stock price not found")
+        raise HTTPException(status_code=429, detail=message)
+
     return {
-        "ticker": stock.ticker,
-        "current_price": stock.current_price,
-        "sector": stock.sector,
-        "asset_type": stock.asset_type,
-        "cached": False
+        "ticker": quote.ticker,
+        "current_price": quote.current_price,
+        "sector": quote.sector or "Unknown",
+        "asset_type": quote.asset_type,
+        "cached": cached
     }
 
 @app.post("/api/users", response_model=UserResponse)

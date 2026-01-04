@@ -20,6 +20,7 @@ class StockDataRecord:
     current_price: Optional[float] = None
     sector: Optional[str] = None
     asset_type: Optional[str] = None
+    last_updated: Optional[object] = None
 
 
 class HoldingsRepository(Protocol):
