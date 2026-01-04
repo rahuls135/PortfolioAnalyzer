@@ -9,12 +9,11 @@ import threading
 import os
 import requests
 import re
-import json
 from zoneinfo import ZoneInfo
 from database import get_db, engine, Base
 import models
 from auth import get_current_user, get_supabase_user_id
-from services import get_transcript_provider
+from services import get_transcript_provider, TranscriptService, SqlAlchemyTranscriptRepository
 
 app = FastAPI()
 
@@ -298,25 +297,6 @@ def _get_asset_type(ticker: str, db: Session) -> str:
         db.add(stock)
         db.commit()
     return asset_type
-
-def _normalize_transcript_text(text: str | list | dict) -> str:
-    if not text:
-        return ""
-    if isinstance(text, dict):
-        return json.dumps(text)
-    if isinstance(text, list):
-        return " ".join(str(item) for item in text if item)
-    return str(text)
-
-def _summarize_transcript(text: str | list | dict, max_sentences: int = 4, max_chars: int = 800) -> str:
-    if not text:
-        return ""
-    normalized = _normalize_transcript_text(text)
-    sentences = re.split(r'(?<=[.!?])\s+', normalized.strip())
-    summary = " ".join(sentences[:max_sentences]).strip()
-    if len(summary) > max_chars:
-        summary = summary[:max_chars].rstrip() + "..."
-    return summary
 
 def _normalize_bulk_holdings(holdings: List[HoldingCreate]) -> List[HoldingCreate]:
     grouped: dict[str, HoldingCreate] = {}
@@ -959,51 +939,19 @@ def get_earnings_transcript(
         provider = get_transcript_provider(_av_throttle)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+    repo = SqlAlchemyTranscriptRepository(db)
+    service = TranscriptService(repo, provider)
 
-    for candidate in attempts:
-        existing = db.query(models.EarningsTranscript).filter(
-            models.EarningsTranscript.ticker == cleaned,
-            models.EarningsTranscript.quarter == candidate
-        ).first()
-        if existing and existing.summary:
-            return {
-                "ticker": existing.ticker,
-                "quarter": existing.quarter,
-                "summary": existing.summary,
-                "fetched_at": existing.fetched_at
-            }
+    try:
+        record = service.get_summary(cleaned, quarter, fallback)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Transcript not found")
 
-        try:
-            transcript_result = provider.get_transcript(cleaned, candidate)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=429, detail=str(exc))
-        print("D - Invoking AV")
-        transcript_text = _normalize_transcript_text(transcript_result.transcript)
-        if not transcript_text:
-            continue
-
-        summary = _summarize_transcript(transcript_text)
-        fetched_at = datetime.now(timezone.utc)
-        if existing:
-            existing.transcript = transcript_text
-            existing.summary = summary
-            existing.fetched_at = fetched_at
-        else:
-            existing = models.EarningsTranscript(
-                ticker=cleaned,
-                quarter=candidate,
-                transcript=transcript_text,
-                summary=summary,
-                fetched_at=fetched_at
-            )
-            db.add(existing)
-        db.commit()
-
-        return {
-            "ticker": existing.ticker,
-            "quarter": existing.quarter,
-            "summary": existing.summary,
-            "fetched_at": existing.fetched_at
-        }
-
-    raise HTTPException(status_code=404, detail="Transcript not found")
+    return {
+        "ticker": record.ticker,
+        "quarter": record.quarter,
+        "summary": record.summary or "",
+        "fetched_at": record.fetched_at
+    }

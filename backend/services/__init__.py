@@ -14,6 +14,8 @@ from .repositories import (
     TranscriptRepository,
     TranscriptRecord,
 )
+from .transcripts import TranscriptService
+from .sqlalchemy_repositories import SqlAlchemyTranscriptRepository
 
 __all__ = [
     "MarketDataProvider",
@@ -28,4 +30,6 @@ __all__ = [
     "StockDataRecord",
     "TranscriptRepository",
     "TranscriptRecord",
+    "TranscriptService",
+    "SqlAlchemyTranscriptRepository",
 ]
