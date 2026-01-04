@@ -458,6 +458,8 @@ def get_stock_data(
     now_utc = datetime.now(timezone.utc)
 
     def _cache_valid(last_updated: datetime, now_time: datetime) -> bool:
+        if last_updated.tzinfo is None:
+            last_updated = last_updated.replace(tzinfo=timezone.utc)
         return (now_time - last_updated).total_seconds() < 86400 or _market_closed_cache_valid(last_updated, now_time)
 
     try:
