@@ -4,7 +4,18 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
 import models
-from .repositories import TranscriptRepository, TranscriptRecord, StockDataRepository, StockDataRecord, HoldingsRepository, HoldingRecord
+from .repositories import (
+    TranscriptRepository,
+    TranscriptRecord,
+    StockDataRepository,
+    StockDataRecord,
+    HoldingsRepository,
+    HoldingRecord,
+    ProfileRepository,
+    ProfileRecord,
+    UserRepository,
+    UserRecord,
+)
 
 
 class SqlAlchemyTranscriptRepository(TranscriptRepository):
@@ -208,4 +219,140 @@ class SqlAlchemyStockDataRepository(StockDataRepository):
             current_price=stock.current_price,
             sector=stock.sector,
             asset_type=stock.asset_type
+        )
+
+
+class SqlAlchemyProfileRepository(ProfileRepository):
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def get(self, user_id: int) -> ProfileRecord | None:
+        profile = (
+            self.db.query(models.UserProfile)
+            .filter(models.UserProfile.user_id == user_id)
+            .first()
+        )
+        if not profile:
+            return None
+        return ProfileRecord(
+            user_id=profile.user_id,
+            ai_analysis=profile.ai_analysis,
+            portfolio_analysis=profile.portfolio_analysis,
+            portfolio_analysis_at=profile.portfolio_analysis_at,
+            portfolio_metrics=profile.portfolio_metrics,
+            portfolio_transcripts=profile.portfolio_transcripts,
+            portfolio_transcripts_quarter=profile.portfolio_transcripts_quarter
+        )
+
+    def save(self, record: ProfileRecord) -> ProfileRecord:
+        profile = (
+            self.db.query(models.UserProfile)
+            .filter(models.UserProfile.user_id == record.user_id)
+            .first()
+        )
+        if not profile:
+            profile = models.UserProfile(user_id=record.user_id)
+            self.db.add(profile)
+        profile.ai_analysis = record.ai_analysis
+        profile.portfolio_analysis = record.portfolio_analysis
+        profile.portfolio_analysis_at = record.portfolio_analysis_at
+        profile.portfolio_metrics = record.portfolio_metrics
+        profile.portfolio_transcripts = record.portfolio_transcripts
+        profile.portfolio_transcripts_quarter = record.portfolio_transcripts_quarter
+        self.db.commit()
+        self.db.refresh(profile)
+        return ProfileRecord(
+            user_id=profile.user_id,
+            ai_analysis=profile.ai_analysis,
+            portfolio_analysis=profile.portfolio_analysis,
+            portfolio_analysis_at=profile.portfolio_analysis_at,
+            portfolio_metrics=profile.portfolio_metrics,
+            portfolio_transcripts=profile.portfolio_transcripts,
+            portfolio_transcripts_quarter=profile.portfolio_transcripts_quarter
+        )
+
+
+class SqlAlchemyUserRepository(UserRepository):
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def get_by_supabase_id(self, supabase_user_id: str) -> UserRecord | None:
+        user = (
+            self.db.query(models.User)
+            .filter(models.User.supabase_user_id == supabase_user_id)
+            .first()
+        )
+        if not user:
+            return None
+        return UserRecord(
+            id=user.id,
+            supabase_user_id=user.supabase_user_id,
+            age=user.age,
+            income=user.income,
+            risk_tolerance=user.risk_tolerance,
+            risk_assessment_mode=user.risk_assessment_mode,
+            retirement_years=user.retirement_years,
+            obligations_amount=user.obligations_amount
+        )
+
+    def get_by_id(self, user_id: int) -> UserRecord | None:
+        user = self.db.query(models.User).filter(models.User.id == user_id).first()
+        if not user:
+            return None
+        return UserRecord(
+            id=user.id,
+            supabase_user_id=user.supabase_user_id,
+            age=user.age,
+            income=user.income,
+            risk_tolerance=user.risk_tolerance,
+            risk_assessment_mode=user.risk_assessment_mode,
+            retirement_years=user.retirement_years,
+            obligations_amount=user.obligations_amount
+        )
+
+    def create(self, record: UserRecord) -> UserRecord:
+        user = models.User(
+            supabase_user_id=record.supabase_user_id,
+            age=record.age,
+            income=record.income,
+            risk_tolerance=record.risk_tolerance,
+            risk_assessment_mode=record.risk_assessment_mode,
+            retirement_years=record.retirement_years,
+            obligations_amount=record.obligations_amount
+        )
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return UserRecord(
+            id=user.id,
+            supabase_user_id=user.supabase_user_id,
+            age=user.age,
+            income=user.income,
+            risk_tolerance=user.risk_tolerance,
+            risk_assessment_mode=user.risk_assessment_mode,
+            retirement_years=user.retirement_years,
+            obligations_amount=user.obligations_amount
+        )
+
+    def update(self, record: UserRecord) -> UserRecord:
+        user = self.db.query(models.User).filter(models.User.id == record.id).first()
+        if not user:
+            raise ValueError("User not found")
+        user.age = record.age
+        user.income = record.income
+        user.risk_tolerance = record.risk_tolerance
+        user.risk_assessment_mode = record.risk_assessment_mode
+        user.retirement_years = record.retirement_years
+        user.obligations_amount = record.obligations_amount
+        self.db.commit()
+        self.db.refresh(user)
+        return UserRecord(
+            id=user.id,
+            supabase_user_id=user.supabase_user_id,
+            age=user.age,
+            income=user.income,
+            risk_tolerance=user.risk_tolerance,
+            risk_assessment_mode=user.risk_assessment_mode,
+            retirement_years=user.retirement_years,
+            obligations_amount=user.obligations_amount
         )

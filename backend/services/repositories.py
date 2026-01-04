@@ -63,3 +63,48 @@ class TranscriptRepository(Protocol):
 
     def save(self, record: TranscriptRecord) -> TranscriptRecord:
         ...
+
+
+@dataclass
+class ProfileRecord:
+    user_id: int
+    ai_analysis: Optional[str] = None
+    portfolio_analysis: Optional[str] = None
+    portfolio_analysis_at: Optional[object] = None
+    portfolio_metrics: Optional[dict] = None
+    portfolio_transcripts: Optional[dict] = None
+    portfolio_transcripts_quarter: Optional[str] = None
+
+
+class ProfileRepository(Protocol):
+    def get(self, user_id: int) -> Optional[ProfileRecord]:
+        ...
+
+    def save(self, record: ProfileRecord) -> ProfileRecord:
+        ...
+
+
+@dataclass
+class UserRecord:
+    id: int
+    supabase_user_id: str
+    age: int
+    income: float
+    risk_tolerance: str
+    risk_assessment_mode: str
+    retirement_years: int
+    obligations_amount: Optional[float] = None
+
+
+class UserRepository(Protocol):
+    def get_by_supabase_id(self, supabase_user_id: str) -> Optional[UserRecord]:
+        ...
+
+    def get_by_id(self, user_id: int) -> Optional[UserRecord]:
+        ...
+
+    def create(self, record: UserRecord) -> UserRecord:
+        ...
+
+    def update(self, record: UserRecord) -> UserRecord:
+        ...

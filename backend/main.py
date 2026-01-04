@@ -19,9 +19,16 @@ from services import (
     MarketDataService,
     HoldingsService,
     HoldingInput,
+    AnalysisService,
+    ProfileCreateInput,
+    ProfileUpdateInput,
+    build_profile_ai_analysis,
+    get_profile_service,
+    get_profile_repository,
     SqlAlchemyTranscriptRepository,
     SqlAlchemyStockDataRepository,
     SqlAlchemyHoldingsRepository,
+    SqlAlchemyProfileRepository,
 )
 
 app = FastAPI()
@@ -447,12 +454,8 @@ def create_user_profile(
     supabase_user_id: str = Depends(get_supabase_user_id),
     db: Session = Depends(get_db),
 ):
-    # Check if user already exists
-    existing_user = db.query(models.User).filter(
-        models.User.supabase_user_id == supabase_user_id
-    ).first()
-    
-    if existing_user:
+    profile_service = get_profile_service(db)
+    if profile_service.get_by_supabase_id(supabase_user_id):
         raise HTTPException(status_code=400, detail="User profile already exists")
     
     obligations_amount = float(user.obligations_amount or 0)
@@ -474,8 +477,14 @@ def create_user_profile(
             raise HTTPException(status_code=400, detail="Risk tolerance is required for manual mode")
         risk_tolerance = user.risk_tolerance
 
-    # Create user
-    db_user = models.User(
+    ai_analysis = build_profile_ai_analysis(
+        age=user.age,
+        retirement_years=user.retirement_years,
+        risk_tolerance=risk_tolerance,
+        obligations_amount=obligations_amount
+    )
+
+    created = profile_service.create_profile(ProfileCreateInput(
         supabase_user_id=supabase_user_id,
         age=user.age,
         income=user.income,
@@ -483,44 +492,17 @@ def create_user_profile(
         risk_assessment_mode=risk_mode,
         retirement_years=user.retirement_years,
         obligations_amount=obligations_amount
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    # Mock AI analysis
-    obligations_text = f"monthly obligations around ${obligations_amount:,.0f}" if obligations_amount else "no major obligations reported"
-    ai_analysis = f"""Based on your profile (age {user.age}, {user.retirement_years} years to retirement, {risk_tolerance} risk tolerance, {obligations_text}):
+    ), ai_analysis)
 
-Recommended Allocation:
-- Equities: 80%
-- Bonds: 15%
-- Cash: 5%
-
-Key Recommendations:
-1. With {user.retirement_years} years until retirement, you have time to ride out market volatility
-2. Your {risk_tolerance} risk tolerance aligns with your timeline and obligations
-3. Consider diversifying across large-cap, mid-cap, and international stocks
-4. Begin gradually increasing bond allocation as you approach retirement
-
-Focus sectors: Technology, Healthcare, Consumer Discretionary, Financials"""
-    
-    db_profile = models.UserProfile(
-        user_id=db_user.id,
-        ai_analysis=ai_analysis
-    )
-    db.add(db_profile)
-    db.commit()
-    
     return {
-        "id": db_user.id,
-        "supabase_user_id": db_user.supabase_user_id,
-        "age": db_user.age,
-        "income": db_user.income,
-        "risk_tolerance": db_user.risk_tolerance,
-        "risk_assessment_mode": db_user.risk_assessment_mode,
-        "retirement_years": db_user.retirement_years,
-        "obligations_amount": db_user.obligations_amount,
+        "id": created.id,
+        "supabase_user_id": created.supabase_user_id,
+        "age": created.age,
+        "income": created.income,
+        "risk_tolerance": created.risk_tolerance,
+        "risk_assessment_mode": created.risk_assessment_mode,
+        "retirement_years": created.retirement_years,
+        "obligations_amount": created.obligations_amount,
         "ai_analysis": ai_analysis
     }
 
@@ -634,12 +616,8 @@ Key Recommendations:
 3. Keep your long-term perspective with {current_user.retirement_years} years until retirement and {obligations_text}.
 
 Risk Assessment: Your {current_user.risk_tolerance} risk tolerance ({risk_mode} assessment) is {"well-suited" if current_user.retirement_years > 20 else "slightly aggressive"} for your timeline."""
-        if not profile:
-            profile = models.UserProfile(user_id=current_user.id)
-            db.add(profile)
-        profile.portfolio_analysis = ai_analysis
-        profile.portfolio_analysis_at = now_utc
-        db.commit()
+        analysis_service = AnalysisService(SqlAlchemyProfileRepository(db))
+        analysis_service.cache_analysis(current_user.id, ai_analysis, now_utc)
 
     sector_totals: dict[str, float] = {}
     for holding in portfolio_summary:
@@ -668,11 +646,11 @@ Risk Assessment: Your {current_user.risk_tolerance} risk tolerance ({risk_mode} 
         "concentration_top3_pct": concentration_top3,
         "diversification_score": diversification_score
     }
-    if not profile:
-        profile = models.UserProfile(user_id=current_user.id)
-        db.add(profile)
-    profile.portfolio_metrics = metrics_payload
-    db.commit()
+    analysis_service = AnalysisService(SqlAlchemyProfileRepository(db))
+    analysis_service.cache_metrics(
+        current_user.id,
+        metrics_payload
+    )
 
     return {
         "total_value": total_value,
@@ -694,7 +672,8 @@ def get_cached_analysis(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
+    analysis_service = AnalysisService(SqlAlchemyProfileRepository(db))
+    profile = analysis_service.get_cached(current_user.id)
     if not profile or not profile.portfolio_analysis:
         raise HTTPException(status_code=404, detail="No cached analysis available")
     now_utc = datetime.now(timezone.utc)
@@ -712,13 +691,8 @@ def cache_transcripts(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
-    if not profile:
-        profile = models.UserProfile(user_id=current_user.id)
-        db.add(profile)
-    profile.portfolio_transcripts = payload.summaries
-    profile.portfolio_transcripts_quarter = payload.quarter
-    db.commit()
+    analysis_service = AnalysisService(SqlAlchemyProfileRepository(db))
+    analysis_service.cache_transcripts(current_user.id, payload.quarter, payload.summaries)
     return {"status": "ok"}
 
 @app.get("/api/users/me", response_model=UserResponse)
@@ -727,7 +701,8 @@ def get_my_profile(
     db: Session = Depends(get_db)
 ):
     """Fetch the logged-in user's profile and AI analysis."""
-    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
+    profile_repo = get_profile_repository(db)
+    profile = profile_repo.get(current_user.id)
     
     return {
         "id": current_user.id,
@@ -751,42 +726,51 @@ def update_my_profile(
     if not updates:
         raise HTTPException(status_code=400, detail="No profile fields provided")
 
-    if "obligations_amount" in updates and updates["obligations_amount"] is not None:
-        if updates["obligations_amount"] < 0:
-            raise HTTPException(status_code=400, detail="Obligations amount must be a positive number")
+    obligations_amount = updates.get("obligations_amount", current_user.obligations_amount)
+    if obligations_amount is not None and obligations_amount < 0:
+        raise HTTPException(status_code=400, detail="Obligations amount must be a positive number")
 
-    if "risk_assessment_mode" in updates:
-        if updates["risk_assessment_mode"] not in {"manual", "ai"}:
-            raise HTTPException(status_code=400, detail="Invalid risk assessment mode")
+    risk_mode = updates.get("risk_assessment_mode", current_user.risk_assessment_mode or "manual")
+    if risk_mode not in {"manual", "ai"}:
+        raise HTTPException(status_code=400, detail="Invalid risk assessment mode")
 
-    for field, value in updates.items():
-        setattr(current_user, field, value)
+    age = updates.get("age", current_user.age)
+    income = updates.get("income", current_user.income)
+    retirement_years = updates.get("retirement_years", current_user.retirement_years)
 
-    if current_user.risk_assessment_mode == "ai":
-        current_user.risk_tolerance = _compute_risk_tolerance(
-            age=current_user.age,
-            income=current_user.income,
-            retirement_years=current_user.retirement_years,
-            obligations_amount=float(current_user.obligations_amount or 0)
+    if risk_mode == "ai":
+        risk_tolerance = _compute_risk_tolerance(
+            age=age,
+            income=income,
+            retirement_years=retirement_years,
+            obligations_amount=float(obligations_amount or 0)
         )
+    else:
+        risk_tolerance = updates.get("risk_tolerance", current_user.risk_tolerance)
+        if not risk_tolerance:
+            raise HTTPException(status_code=400, detail="Risk tolerance is required for manual mode")
 
-    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
-    if profile:
-        profile.portfolio_analysis = None
-        profile.portfolio_analysis_at = None
-
-    db.commit()
-    db.refresh(current_user)
+    profile_service = get_profile_service(db)
+    updated = profile_service.update_profile(current_user.id, ProfileUpdateInput(
+        age=age,
+        income=income,
+        risk_tolerance=risk_tolerance,
+        risk_assessment_mode=risk_mode,
+        retirement_years=retirement_years,
+        obligations_amount=obligations_amount
+    ))
+    profile_service.clear_analysis_cache(current_user.id)
+    profile = get_profile_repository(db).get(current_user.id)
 
     return {
-        "id": current_user.id,
-        "supabase_user_id": current_user.supabase_user_id,
-        "age": current_user.age,
-        "income": current_user.income,
-        "risk_tolerance": current_user.risk_tolerance,
-        "risk_assessment_mode": current_user.risk_assessment_mode or "manual",
-        "retirement_years": current_user.retirement_years,
-        "obligations_amount": current_user.obligations_amount,
+        "id": updated.id,
+        "supabase_user_id": updated.supabase_user_id,
+        "age": updated.age,
+        "income": updated.income,
+        "risk_tolerance": updated.risk_tolerance,
+        "risk_assessment_mode": updated.risk_assessment_mode or "manual",
+        "retirement_years": updated.retirement_years,
+        "obligations_amount": updated.obligations_amount,
         "ai_analysis": profile.ai_analysis if profile else None
     }
 
