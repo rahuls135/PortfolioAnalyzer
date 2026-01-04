@@ -17,8 +17,11 @@ from services import (
     get_market_data_provider,
     TranscriptService,
     MarketDataService,
+    HoldingsService,
+    HoldingInput,
     SqlAlchemyTranscriptRepository,
     SqlAlchemyStockDataRepository,
+    SqlAlchemyHoldingsRepository,
 )
 
 app = FastAPI()
@@ -283,45 +286,22 @@ def upsert_holding(
 ):
     ticker_upper = holding_in.ticker.upper()
 
-    # 1. Check if the user already owns this stock
-    existing_holding = db.query(models.Holding).filter(
-        models.Holding.user_id == current_user.id,
-        models.Holding.ticker == ticker_upper
-    ).first()
-
-    if existing_holding:
-        # 2. Update Logic: Calculate new Average Price
-        # Formula: (Old Total Cost + New Total Cost) / Total Shares
-        total_shares = existing_holding.shares + holding_in.shares
-        
-        old_cost = existing_holding.shares * existing_holding.avg_price
-        new_cost = holding_in.shares * holding_in.avg_price
-        
-        new_avg_price = (old_cost + new_cost) / total_shares
-
-        existing_holding.shares = total_shares
-        existing_holding.avg_price = new_avg_price
-        
-        db.commit()
-        db.refresh(existing_holding)
-        return existing_holding
-    
     if not _validate_ticker(ticker_upper, db):
         raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker_upper}")
 
-    # 3. Insert Logic: Create a brand new record
-    new_holding = models.Holding(
-        user_id=current_user.id,
-        ticker=ticker_upper,
-        shares=holding_in.shares,
-        avg_price=holding_in.avg_price,
-        asset_type=_get_asset_type(ticker_upper, db)
+    repo = SqlAlchemyHoldingsRepository(db)
+    service = HoldingsService(repo)
+    asset_type = _get_asset_type(ticker_upper, db)
+    record = service.add_or_merge(
+        current_user.id,
+        HoldingInput(
+            ticker=ticker_upper,
+            shares=holding_in.shares,
+            avg_price=holding_in.avg_price,
+            asset_type=asset_type
+        )
     )
-
-    db.add(new_holding)
-    db.commit()
-    db.refresh(new_holding)
-    return new_holding
+    return record
 
 @app.patch("/api/holdings/{holding_id}", response_model=HoldingResponse)
 def update_holding(
@@ -330,24 +310,21 @@ def update_holding(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # Find the holding by ID and ensure it belongs to the user
-    holding = db.query(models.Holding).filter(
-        models.Holding.id == holding_id,
-        models.Holding.user_id == current_user.id
-    ).first()
-    
-    if not holding:
+    repo = SqlAlchemyHoldingsRepository(db)
+    service = HoldingsService(repo)
+    try:
+        record = service.update_holding(
+            current_user.id,
+            holding_id,
+            HoldingInput(
+                ticker=update.ticker.upper(),
+                shares=update.shares,
+                avg_price=update.avg_price
+            )
+        )
+    except ValueError:
         raise HTTPException(status_code=404, detail="Holding not found")
-    
-    # Update the values using the HoldingCreate model
-    holding.shares = update.shares
-    holding.avg_price = update.avg_price
-    # If you want to allow ticker changes (typo fix):
-    holding.ticker = update.ticker.upper()
-    
-    db.commit()
-    db.refresh(holding)
-    return holding
+    return record
 
 @app.post("/api/holdings/bulk", response_model=List[HoldingResponse])
 def bulk_upsert_holdings(
@@ -367,38 +344,26 @@ def bulk_upsert_holdings(
             raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
         asset_types[ticker] = _get_asset_type(ticker, db)
 
+    repo = SqlAlchemyHoldingsRepository(db)
+    service = HoldingsService(repo)
+    inputs = [
+        HoldingInput(
+            ticker=item.ticker.upper(),
+            shares=item.shares,
+            avg_price=item.avg_price,
+            asset_type=asset_types.get(item.ticker.upper())
+        )
+        for item in normalized
+    ]
+
     if mode == "replace":
         db.query(models.Holding).filter(models.Holding.user_id == current_user.id).delete(synchronize_session=False)
-        for item in normalized:
-            db.add(models.Holding(
-                user_id=current_user.id,
-                ticker=item.ticker.upper(),
-                shares=item.shares,
-                avg_price=item.avg_price,
-                asset_type=asset_types.get(item.ticker.upper())
-            ))
-        db.commit()
-        return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
+        service.replace_holdings(current_user.id, inputs)
+        return service.list_holdings(current_user.id)
 
-    existing = db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
-    existing_map = {h.ticker.upper(): h for h in existing}
-    for item in normalized:
-        ticker = item.ticker.upper()
-        if ticker in existing_map:
-            holding = existing_map[ticker]
-            total_shares = holding.shares + item.shares
-            holding.avg_price = ((holding.shares * holding.avg_price) + (item.shares * item.avg_price)) / total_shares
-            holding.shares = total_shares
-        else:
-            db.add(models.Holding(
-                user_id=current_user.id,
-                ticker=ticker,
-                shares=item.shares,
-                avg_price=item.avg_price,
-                asset_type=asset_types.get(ticker)
-            ))
-    db.commit()
-    return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
+    for item in inputs:
+        service.add_or_merge(current_user.id, item)
+    return service.list_holdings(current_user.id)
 
 @app.get("/api/tickers/validate/{ticker}")
 def validate_ticker(
@@ -418,7 +383,9 @@ def get_holdings(
     current_user: models.User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ):
-    return db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
+    repo = SqlAlchemyHoldingsRepository(db)
+    service = HoldingsService(repo)
+    return service.list_holdings(current_user.id)
 
 # Delete a holding
 @app.delete("/api/holdings/{holding_id}")
@@ -428,16 +395,12 @@ def delete_holding(
     db: Session = Depends(get_db)
 ):
     """Delete a specific holding if owned by the user."""
-    holding = db.query(models.Holding).filter(
-        models.Holding.id == holding_id,
-        models.Holding.user_id == current_user.id
-    ).first()
-    
-    if not holding:
+    repo = SqlAlchemyHoldingsRepository(db)
+    service = HoldingsService(repo)
+    try:
+        service.delete_holding(current_user.id, holding_id)
+    except ValueError:
         raise HTTPException(status_code=404, detail="Holding not found")
-    
-    db.delete(holding)
-    db.commit()
     return {"message": "Holding deleted"}
 
 @app.get("/api/stocks/{ticker}")

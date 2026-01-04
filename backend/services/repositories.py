@@ -27,7 +27,13 @@ class HoldingsRepository(Protocol):
     def list_by_user(self, user_id: int) -> Iterable[HoldingRecord]:
         ...
 
-    def upsert(self, record: HoldingRecord) -> HoldingRecord:
+    def get_by_ticker(self, user_id: int, ticker: str) -> HoldingRecord | None:
+        ...
+
+    def create(self, record: HoldingRecord) -> HoldingRecord:
+        ...
+
+    def update(self, record: HoldingRecord) -> HoldingRecord:
         ...
 
     def delete(self, holding_id: int, user_id: int) -> None:

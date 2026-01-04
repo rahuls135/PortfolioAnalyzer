@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
 import models
-from .repositories import TranscriptRepository, TranscriptRecord, StockDataRepository, StockDataRecord
+from .repositories import TranscriptRepository, TranscriptRecord, StockDataRepository, StockDataRecord, HoldingsRepository, HoldingRecord
 
 
 class SqlAlchemyTranscriptRepository(TranscriptRepository):
@@ -29,6 +29,100 @@ class SqlAlchemyTranscriptRepository(TranscriptRepository):
             summary=existing.summary,
             fetched_at=existing.fetched_at
         )
+
+
+class SqlAlchemyHoldingsRepository(HoldingsRepository):
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def list_by_user(self, user_id: int) -> list[HoldingRecord]:
+        holdings = (
+            self.db.query(models.Holding)
+            .filter(models.Holding.user_id == user_id)
+            .all()
+        )
+        return [
+            HoldingRecord(
+                id=h.id,
+                user_id=h.user_id,
+                ticker=h.ticker,
+                shares=h.shares,
+                avg_price=h.avg_price,
+                asset_type=h.asset_type
+            )
+            for h in holdings
+        ]
+
+    def get_by_ticker(self, user_id: int, ticker: str) -> HoldingRecord | None:
+        holding = (
+            self.db.query(models.Holding)
+            .filter(models.Holding.user_id == user_id, models.Holding.ticker == ticker)
+            .first()
+        )
+        if not holding:
+            return None
+        return HoldingRecord(
+            id=holding.id,
+            user_id=holding.user_id,
+            ticker=holding.ticker,
+            shares=holding.shares,
+            avg_price=holding.avg_price,
+            asset_type=holding.asset_type
+        )
+
+    def create(self, record: HoldingRecord) -> HoldingRecord:
+        holding = models.Holding(
+            user_id=record.user_id,
+            ticker=record.ticker,
+            shares=record.shares,
+            avg_price=record.avg_price,
+            asset_type=record.asset_type
+        )
+        self.db.add(holding)
+        self.db.commit()
+        self.db.refresh(holding)
+        return HoldingRecord(
+            id=holding.id,
+            user_id=holding.user_id,
+            ticker=holding.ticker,
+            shares=holding.shares,
+            avg_price=holding.avg_price,
+            asset_type=holding.asset_type
+        )
+
+    def update(self, record: HoldingRecord) -> HoldingRecord:
+        holding = (
+            self.db.query(models.Holding)
+            .filter(models.Holding.id == record.id, models.Holding.user_id == record.user_id)
+            .first()
+        )
+        if not holding:
+            raise ValueError("Holding not found")
+        holding.ticker = record.ticker
+        holding.shares = record.shares
+        holding.avg_price = record.avg_price
+        holding.asset_type = record.asset_type
+        self.db.commit()
+        self.db.refresh(holding)
+        return HoldingRecord(
+            id=holding.id,
+            user_id=holding.user_id,
+            ticker=holding.ticker,
+            shares=holding.shares,
+            avg_price=holding.avg_price,
+            asset_type=holding.asset_type
+        )
+
+    def delete(self, holding_id: int, user_id: int) -> None:
+        holding = (
+            self.db.query(models.Holding)
+            .filter(models.Holding.id == holding_id, models.Holding.user_id == user_id)
+            .first()
+        )
+        if not holding:
+            raise ValueError("Holding not found")
+        self.db.delete(holding)
+        self.db.commit()
 
 
 class SqlAlchemyStockDataRepository(StockDataRepository):
