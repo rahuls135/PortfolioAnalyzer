@@ -71,3 +71,27 @@ class HoldingsService:
 
     def delete_holding(self, user_id: int, holding_id: int) -> None:
         self.repo.delete(holding_id, user_id)
+
+
+def normalize_bulk_holdings(holdings: Iterable[HoldingInput]) -> List[HoldingInput]:
+    grouped: dict[str, HoldingInput] = {}
+    for item in holdings:
+        ticker = item.ticker.upper()
+        if ticker in grouped:
+            existing = grouped[ticker]
+            total_shares = existing.shares + item.shares
+            weighted_avg = ((existing.shares * existing.avg_price) + (item.shares * item.avg_price)) / total_shares
+            grouped[ticker] = HoldingInput(
+                ticker=ticker,
+                shares=total_shares,
+                avg_price=weighted_avg,
+                asset_type=existing.asset_type
+            )
+        else:
+            grouped[ticker] = HoldingInput(
+                ticker=ticker,
+                shares=item.shares,
+                avg_price=item.avg_price,
+                asset_type=item.asset_type
+            )
+    return list(grouped.values())

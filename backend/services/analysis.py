@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Iterable
 
 from .repositories import ProfileRepository, ProfileRecord
@@ -43,3 +43,28 @@ class AnalysisService:
         profile.portfolio_transcripts = summaries
         profile.portfolio_transcripts_quarter = quarter
         self.profile_repo.save(profile)
+
+    def build_meta(
+        self,
+        profile: ProfileRecord | None,
+        now_utc: datetime,
+        cooldown_seconds: int,
+        cached: bool,
+    ) -> dict:
+        last_at = None
+        next_at = None
+        remaining = 0
+
+        if profile and profile.portfolio_analysis_at:
+            last_at = profile.portfolio_analysis_at
+            if last_at.tzinfo is None:
+                last_at = last_at.replace(tzinfo=timezone.utc)
+            next_at = last_at + timedelta(seconds=cooldown_seconds)
+            remaining = max(0, int((next_at - now_utc).total_seconds()))
+
+        return {
+            "cached": cached,
+            "last_analysis_at": last_at.isoformat() if last_at else None,
+            "next_available_at": next_at.isoformat() if next_at else None,
+            "cooldown_remaining_seconds": remaining
+        }

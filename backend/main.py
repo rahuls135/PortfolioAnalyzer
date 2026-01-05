@@ -13,22 +13,20 @@ from database import get_db, engine, Base
 import models
 from auth import get_current_user, get_supabase_user_id
 from services import (
-    get_transcript_provider,
-    get_market_data_provider,
-    TranscriptService,
-    MarketDataService,
-    HoldingsService,
     HoldingInput,
-    AnalysisService,
+    normalize_bulk_holdings,
     ProfileCreateInput,
     ProfileUpdateInput,
     build_profile_ai_analysis,
+    compute_risk_tolerance,
     get_profile_service,
     get_profile_repository,
-    SqlAlchemyTranscriptRepository,
-    SqlAlchemyStockDataRepository,
-    SqlAlchemyHoldingsRepository,
-    SqlAlchemyProfileRepository,
+    get_market_data_service,
+    get_transcript_service,
+    get_holdings_service,
+    get_analysis_service,
+    get_portfolio_analysis_service,
+    AnalysisUser,
 )
 
 app = FastAPI()
@@ -172,34 +170,6 @@ def _market_closed_cache_valid(last_updated_utc: datetime, now_utc: datetime) ->
     last_et = last_updated_utc.astimezone(MARKET_TZ)
     return last_et >= last_close and now_et < next_open
 
-def _analysis_meta(profile: Optional[models.UserProfile], now_utc: datetime, cached: bool) -> dict:
-    last_at = None
-    next_at = None
-    remaining = 0
-
-    if profile and profile.portfolio_analysis_at:
-        last_at = profile.portfolio_analysis_at
-        if last_at.tzinfo is None:
-            last_at = last_at.replace(tzinfo=timezone.utc)
-        next_at = last_at + timedelta(seconds=ANALYSIS_COOLDOWN_SECONDS)
-        remaining = max(0, int((next_at - now_utc).total_seconds()))
-
-    return {
-        "cached": cached,
-        "last_analysis_at": last_at.isoformat() if last_at else None,
-        "next_available_at": next_at.isoformat() if next_at else None,
-        "cooldown_remaining_seconds": remaining
-    }
-
-def _compute_risk_tolerance(age: int, income: float, retirement_years: int, obligations_amount: float) -> str:
-    high_obligations = obligations_amount >= 2500
-    low_obligations = obligations_amount <= 1000
-    if retirement_years <= 10 or age >= 55 or high_obligations:
-        return "conservative"
-    if retirement_years >= 25 and income >= 100000 and low_obligations:
-        return "aggressive"
-    return "moderate"
-
 _AV_LOCK = threading.Lock()
 _AV_LAST_CALL = 0.0
 
@@ -246,12 +216,10 @@ def _validate_ticker(ticker: str, db: Session) -> bool:
         if ticker not in universe:
             return False
         return True
-    repo = SqlAlchemyStockDataRepository(db)
     try:
-        provider = get_market_data_provider(_av_throttle)
+        service = get_market_data_service(db, _av_throttle)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-    service = MarketDataService(provider, repo)
     try:
         return service.validate_ticker(ticker)
     except RuntimeError as exc:
@@ -261,29 +229,14 @@ def _validate_ticker(ticker: str, db: Session) -> bool:
         raise HTTPException(status_code=429, detail=message)
 
 def _get_asset_type(ticker: str, db: Session) -> str:
-    repo = SqlAlchemyStockDataRepository(db)
     try:
-        provider = get_market_data_provider(_av_throttle)
+        service = get_market_data_service(db, _av_throttle)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-    service = MarketDataService(provider, repo)
     try:
         return service.get_asset_type(ticker)
     except RuntimeError as exc:
         raise HTTPException(status_code=429, detail=str(exc))
-
-def _normalize_bulk_holdings(holdings: List[HoldingCreate]) -> List[HoldingCreate]:
-    grouped: dict[str, HoldingCreate] = {}
-    for item in holdings:
-        ticker = item.ticker.upper()
-        if ticker in grouped:
-            existing = grouped[ticker]
-            total_shares = existing.shares + item.shares
-            weighted_avg = ((existing.shares * existing.avg_price) + (item.shares * item.avg_price)) / total_shares
-            grouped[ticker] = HoldingCreate(ticker=ticker, shares=total_shares, avg_price=weighted_avg)
-        else:
-            grouped[ticker] = HoldingCreate(ticker=ticker, shares=item.shares, avg_price=item.avg_price)
-    return list(grouped.values())
 
 @app.post("/api/holdings", response_model=HoldingResponse)
 def upsert_holding(
@@ -296,8 +249,7 @@ def upsert_holding(
     if not _validate_ticker(ticker_upper, db):
         raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker_upper}")
 
-    repo = SqlAlchemyHoldingsRepository(db)
-    service = HoldingsService(repo)
+    service = get_holdings_service(db)
     asset_type = _get_asset_type(ticker_upper, db)
     record = service.add_or_merge(
         current_user.id,
@@ -317,8 +269,7 @@ def update_holding(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    repo = SqlAlchemyHoldingsRepository(db)
-    service = HoldingsService(repo)
+    service = get_holdings_service(db)
     try:
         record = service.update_holding(
             current_user.id,
@@ -343,16 +294,22 @@ def bulk_upsert_holdings(
     if mode not in {"merge", "replace"}:
         raise HTTPException(status_code=400, detail="Mode must be 'merge' or 'replace'")
 
-    normalized = _normalize_bulk_holdings(payload.holdings)
+    normalized_inputs = normalize_bulk_holdings([
+        HoldingInput(
+            ticker=item.ticker.upper(),
+            shares=item.shares,
+            avg_price=item.avg_price
+        )
+        for item in payload.holdings
+    ])
     asset_types: dict[str, str] = {}
-    for item in normalized:
+    for item in normalized_inputs:
         ticker = item.ticker.upper()
         if not _validate_ticker(ticker, db):
             raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
         asset_types[ticker] = _get_asset_type(ticker, db)
 
-    repo = SqlAlchemyHoldingsRepository(db)
-    service = HoldingsService(repo)
+    service = get_holdings_service(db)
     inputs = [
         HoldingInput(
             ticker=item.ticker.upper(),
@@ -360,7 +317,7 @@ def bulk_upsert_holdings(
             avg_price=item.avg_price,
             asset_type=asset_types.get(item.ticker.upper())
         )
-        for item in normalized
+        for item in normalized_inputs
     ]
 
     if mode == "replace":
@@ -390,8 +347,7 @@ def get_holdings(
     current_user: models.User = Depends(get_current_user), 
     db: Session = Depends(get_db)
 ):
-    repo = SqlAlchemyHoldingsRepository(db)
-    service = HoldingsService(repo)
+    service = get_holdings_service(db)
     return service.list_holdings(current_user.id)
 
 # Delete a holding
@@ -402,8 +358,7 @@ def delete_holding(
     db: Session = Depends(get_db)
 ):
     """Delete a specific holding if owned by the user."""
-    repo = SqlAlchemyHoldingsRepository(db)
-    service = HoldingsService(repo)
+    service = get_holdings_service(db)
     try:
         service.delete_holding(current_user.id, holding_id)
     except ValueError:
@@ -420,11 +375,9 @@ def get_stock_data(
     if not ticker or not ticker.isalnum() or len(ticker) > 10:
         raise HTTPException(status_code=400, detail="Invalid ticker format")
     try:
-        provider = get_market_data_provider(_av_throttle)
+        service = get_market_data_service(db, _av_throttle)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-    repo = SqlAlchemyStockDataRepository(db)
-    service = MarketDataService(provider, repo)
     now_utc = datetime.now(timezone.utc)
 
     def _cache_valid(last_updated: datetime, now_time: datetime) -> bool:
@@ -466,7 +419,7 @@ def create_user_profile(
         raise HTTPException(status_code=400, detail="Invalid risk assessment mode")
 
     if risk_mode == "ai":
-        risk_tolerance = _compute_risk_tolerance(
+        risk_tolerance = compute_risk_tolerance(
             age=user.age,
             income=user.income,
             retirement_years=user.retirement_years,
@@ -513,158 +466,33 @@ def analyze_portfolio(
 ):
     """Perform portfolio math and AI analysis for the logged-in user."""
     now_utc = datetime.now(timezone.utc)
-    profile = db.query(models.UserProfile).filter(models.UserProfile.user_id == current_user.id).first()
-    risk_mode = current_user.risk_assessment_mode or "manual"
-
-    # 1. Fetch holdings for the user identified by JWT
-    holdings = db.query(models.Holding).filter(models.Holding.user_id == current_user.id).all()
-    
-    if not holdings:
-        return {
-            "total_value": 0,
-            "holdings": [],
-            "ai_analysis": "Add some holdings to see your portfolio analysis!",
-            "metrics": {
-                "sector_allocation": [],
-                "top_holdings": [],
-                "concentration_top3_pct": 0,
-                "diversification_score": 0
-            },
-            "user_profile": {
-                "age": current_user.age,
-                "risk_tolerance": current_user.risk_tolerance,
-                "risk_assessment_mode": risk_mode,
-                "retirement_years": current_user.retirement_years,
-                "obligations_amount": current_user.obligations_amount
-            },
-            "analysis_meta": _analysis_meta(profile, now_utc, cached=False)
-        }
-
-    portfolio_summary = []
-    total_value = 0
-    
-    for holding in holdings:
-        # 2. Get stock price (Check cache first)
-        stock = db.query(models.StockData).filter(models.StockData.ticker == holding.ticker).first()
-        
-        if not stock:
-            try:
-                # This triggers the Alpha Vantage fetch logic
-                get_stock_data(holding.ticker, db)
-                stock = db.query(models.StockData).filter(models.StockData.ticker == holding.ticker).first()
-            except Exception as e:
-                print(f"Could not fetch data for {holding.ticker}: {e}")
-                continue
-        
-        if not stock:
-            continue
-
-        # 3. Math calculations
-        current_value = holding.shares * stock.current_price
-        cost_basis = holding.shares * holding.avg_price
-        gain_loss = current_value - cost_basis
-        gain_loss_pct = (gain_loss / cost_basis) * 100 if cost_basis > 0 else 0
-        
-        portfolio_summary.append({
-            "ticker": holding.ticker,
-            "shares": holding.shares,
-            "avg_price": holding.avg_price,
-            "current_price": stock.current_price,
-            "current_value": current_value,
-            "gain_loss": gain_loss,
-            "gain_loss_pct": gain_loss_pct,
-            "sector": getattr(stock, 'sector', 'Unknown') # Safely handle missing sector
-        })
-        
-        total_value += current_value
-    
-    # 4. Analysis Logic (using current_user)
-    tickers = [h['ticker'] for h in portfolio_summary]
-    tech_stocks = ['AAPL', 'MSFT', 'GOOGL', 'NVDA', 'TSLA', 'META', 'AMZN']
-    tech_count = sum(1 for t in tickers if t in tech_stocks)
-    
-    concentration = tech_count / len(tickers) if tickers else 0
-    if concentration > 0.6:
-        diversification_note = "Your portfolio is heavily concentrated in technology. Consider diversifying into healthcare or utilities."
-    else:
-        diversification_note = "Your portfolio shows good sector diversification."
-    
-    cached = False
-    if profile and profile.portfolio_analysis and profile.portfolio_analysis_at:
-        last_at = profile.portfolio_analysis_at
-        if last_at.tzinfo is None:
-            last_at = last_at.replace(tzinfo=timezone.utc)
-        if (now_utc - last_at).total_seconds() < ANALYSIS_COOLDOWN_SECONDS:
-            cached = True
-
-    if cached:
-        ai_analysis = profile.portfolio_analysis
-    else:
-        obligations_amount = current_user.obligations_amount or 0
-        obligations_text = f"monthly obligations around ${obligations_amount:,.0f}" if obligations_amount else "no major obligations reported"
-        ai_analysis = f"""Portfolio Analysis Summary:
-
-Overall Assessment:
-{diversification_note}
-
-Holdings Breakdown:
-{chr(10).join([f"• {h['ticker']}: ${h['current_value']:.2f} ({h['gain_loss_pct']:+.1f}%)" for h in portfolio_summary])}
-
-Key Recommendations:
-1. Review your positions regularly to maintain target allocation.
-2. Consider tax-loss harvesting on underperforming positions.
-3. Keep your long-term perspective with {current_user.retirement_years} years until retirement and {obligations_text}.
-
-Risk Assessment: Your {current_user.risk_tolerance} risk tolerance ({risk_mode} assessment) is {"well-suited" if current_user.retirement_years > 20 else "slightly aggressive"} for your timeline."""
-        analysis_service = AnalysisService(SqlAlchemyProfileRepository(db))
-        analysis_service.cache_analysis(current_user.id, ai_analysis, now_utc)
-
-    sector_totals: dict[str, float] = {}
-    for holding in portfolio_summary:
-        sector = holding.get("sector") or "Unknown"
-        sector_totals[sector] = sector_totals.get(sector, 0) + holding["current_value"]
-    sector_allocation = [
-        {"sector": sector, "value": value, "pct": (value / total_value * 100) if total_value else 0}
-        for sector, value in sorted(sector_totals.items(), key=lambda item: item[1], reverse=True)
-    ]
-
-    sorted_holdings = sorted(portfolio_summary, key=lambda h: h["current_value"], reverse=True)
-    top_holdings = [
-        {
-            "ticker": h["ticker"],
-            "value": h["current_value"],
-            "pct": (h["current_value"] / total_value * 100) if total_value else 0
-        }
-        for h in sorted_holdings[:5]
-    ]
-    concentration_top3 = sum(h["current_value"] for h in sorted_holdings[:3]) / total_value * 100 if total_value else 0
-    diversification_score = max(0, min(100, 100 - concentration_top3))
-
-    metrics_payload = {
-        "sector_allocation": sector_allocation,
-        "top_holdings": top_holdings,
-        "concentration_top3_pct": concentration_top3,
-        "diversification_score": diversification_score
-    }
-    analysis_service = AnalysisService(SqlAlchemyProfileRepository(db))
-    analysis_service.cache_metrics(
-        current_user.id,
-        metrics_payload
+    analysis_pipeline = get_portfolio_analysis_service(db, _av_throttle)
+    result = analysis_pipeline.analyze(
+        AnalysisUser(
+            id=current_user.id,
+            age=current_user.age,
+            risk_tolerance=current_user.risk_tolerance,
+            risk_assessment_mode=current_user.risk_assessment_mode or "manual",
+            retirement_years=current_user.retirement_years,
+            obligations_amount=current_user.obligations_amount
+        ),
+        now_utc,
+        ANALYSIS_COOLDOWN_SECONDS
     )
+    analysis_service = get_analysis_service(db)
 
     return {
-        "total_value": total_value,
-        "holdings": portfolio_summary,
-        "ai_analysis": ai_analysis,
-        "metrics": metrics_payload,
-        "user_profile": {
-            "age": current_user.age,
-            "risk_tolerance": current_user.risk_tolerance,
-            "risk_assessment_mode": risk_mode,
-            "retirement_years": current_user.retirement_years,
-            "obligations_amount": current_user.obligations_amount
-        },
-        "analysis_meta": _analysis_meta(profile, now_utc, cached=cached)
+        "total_value": result.total_value,
+        "holdings": result.holdings,
+        "ai_analysis": result.ai_analysis,
+        "metrics": result.metrics,
+        "user_profile": result.user_profile,
+        "analysis_meta": analysis_service.build_meta(
+            result.profile,
+            now_utc,
+            ANALYSIS_COOLDOWN_SECONDS,
+            cached=result.cached
+        )
     }
 
 @app.get("/api/analysis/cached", response_model=AnalysisCacheResponse)
@@ -672,14 +500,19 @@ def get_cached_analysis(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    analysis_service = AnalysisService(SqlAlchemyProfileRepository(db))
+    analysis_service = get_analysis_service(db)
     profile = analysis_service.get_cached(current_user.id)
     if not profile or not profile.portfolio_analysis:
         raise HTTPException(status_code=404, detail="No cached analysis available")
     now_utc = datetime.now(timezone.utc)
     return {
         "ai_analysis": profile.portfolio_analysis,
-        "analysis_meta": _analysis_meta(profile, now_utc, cached=True),
+        "analysis_meta": analysis_service.build_meta(
+            profile,
+            now_utc,
+            ANALYSIS_COOLDOWN_SECONDS,
+            cached=True
+        ),
         "metrics": profile.portfolio_metrics,
         "transcripts": profile.portfolio_transcripts,
         "transcripts_quarter": profile.portfolio_transcripts_quarter
@@ -691,7 +524,7 @@ def cache_transcripts(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    analysis_service = AnalysisService(SqlAlchemyProfileRepository(db))
+    analysis_service = get_analysis_service(db)
     analysis_service.cache_transcripts(current_user.id, payload.quarter, payload.summaries)
     return {"status": "ok"}
 
@@ -739,7 +572,7 @@ def update_my_profile(
     retirement_years = updates.get("retirement_years", current_user.retirement_years)
 
     if risk_mode == "ai":
-        risk_tolerance = _compute_risk_tolerance(
+        risk_tolerance = compute_risk_tolerance(
             age=age,
             income=income,
             retirement_years=retirement_years,
@@ -803,11 +636,9 @@ def get_earnings_transcript(
         current_quarter = previous_quarter(current_quarter)
 
     try:
-        provider = get_transcript_provider(_av_throttle)
+        service = get_transcript_service(db, _av_throttle)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-    repo = SqlAlchemyTranscriptRepository(db)
-    service = TranscriptService(repo, provider)
 
     try:
         record = service.get_summary(cleaned, quarter, fallback)

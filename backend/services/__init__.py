@@ -22,11 +22,21 @@ from .repositories import (
 )
 from .transcripts import TranscriptService
 from .market_data import MarketDataService
-from .holdings import HoldingsService, HoldingInput
+from .holdings import HoldingsService, HoldingInput, normalize_bulk_holdings
 from .analysis import AnalysisService
+from .portfolio_analysis import PortfolioAnalysisService, AnalysisUser, PortfolioAnalysisResult
 from .profile import ProfileService, ProfileCreateInput, ProfileUpdateInput
 from .profile import build_profile_ai_analysis
-from .factories import get_profile_service, get_profile_repository
+from .profile import compute_risk_tolerance
+from .factories import (
+    get_profile_service,
+    get_profile_repository,
+    get_market_data_service,
+    get_transcript_service,
+    get_holdings_service,
+    get_analysis_service,
+    get_portfolio_analysis_service,
+)
 from .sqlalchemy_repositories import (
     SqlAlchemyTranscriptRepository,
     SqlAlchemyStockDataRepository,
@@ -58,13 +68,23 @@ __all__ = [
     "MarketDataService",
     "HoldingsService",
     "HoldingInput",
+    "normalize_bulk_holdings",
     "AnalysisService",
+    "PortfolioAnalysisService",
+    "AnalysisUser",
+    "PortfolioAnalysisResult",
     "ProfileService",
     "ProfileCreateInput",
     "ProfileUpdateInput",
     "build_profile_ai_analysis",
+    "compute_risk_tolerance",
     "get_profile_service",
     "get_profile_repository",
+    "get_market_data_service",
+    "get_transcript_service",
+    "get_holdings_service",
+    "get_analysis_service",
+    "get_portfolio_analysis_service",
     "SqlAlchemyTranscriptRepository",
     "SqlAlchemyStockDataRepository",
     "SqlAlchemyHoldingsRepository",

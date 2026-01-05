@@ -106,3 +106,18 @@ Key Recommendations:
 4. Begin gradually increasing bond allocation as you approach retirement
 
 Focus sectors: Technology, Healthcare, Consumer Discretionary, Financials"""
+
+
+def compute_risk_tolerance(
+    age: int,
+    income: float,
+    retirement_years: int,
+    obligations_amount: float,
+) -> str:
+    high_obligations = obligations_amount >= 2500
+    low_obligations = obligations_amount <= 1000
+    if retirement_years <= 10 or age >= 55 or high_obligations:
+        return "conservative"
+    if retirement_years >= 25 and income >= 100000 and low_obligations:
+        return "aggressive"
+    return "moderate"
