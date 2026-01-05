@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from datetime import datetime, timezone, timedelta, time
-from typing import List, Optional, Set
+from typing import List, Optional
 import time as time_module
 import threading
 import os
@@ -26,7 +26,9 @@ from services import (
     get_holdings_service,
     get_analysis_service,
     get_portfolio_analysis_service,
+    get_ticker_validation_service,
     AnalysisUser,
+    TickerUniverseCache,
 )
 
 app = FastAPI()
@@ -182,61 +184,20 @@ def _av_throttle(min_interval_seconds: float = 1.1) -> None:
             time_module.sleep(wait_for)
         _AV_LAST_CALL = time_module.monotonic()
 
-_TICKER_UNIVERSE: Set[str] | None = None
-_TICKER_UNIVERSE_MTIME: float | None = None
-
-def _load_ticker_universe() -> Set[str] | None:
-    global _TICKER_UNIVERSE, _TICKER_UNIVERSE_MTIME
-    path = os.getenv("TICKER_UNIVERSE_PATH")
-    if not path:
-        return None
-    try:
-        stat = os.stat(path)
-    except FileNotFoundError:
-        return None
-    if _TICKER_UNIVERSE is not None and _TICKER_UNIVERSE_MTIME == stat.st_mtime:
-        return _TICKER_UNIVERSE
-    tickers: Set[str] = set()
-    with open(path, "r", encoding="utf-8") as handle:
-        for line in handle:
-            cleaned = line.strip().upper()
-            if not cleaned or cleaned.startswith("#"):
-                continue
-            tickers.add(cleaned)
-    _TICKER_UNIVERSE = tickers
-    _TICKER_UNIVERSE_MTIME = stat.st_mtime
-    return _TICKER_UNIVERSE
-
-def _ticker_universe_enforced() -> bool:
-    return os.getenv("TICKER_UNIVERSE_ENFORCE", "false").lower() == "true"
+_TICKER_UNIVERSE_CACHE: dict[str, TickerUniverseCache] = {}
 
 def _validate_ticker(ticker: str, db: Session) -> bool:
-    universe = _load_ticker_universe()
-    if universe is not None:
-        if ticker not in universe:
-            return False
-        return True
     try:
-        service = get_market_data_service(db, _av_throttle)
+        service = get_ticker_validation_service(db, _av_throttle, _TICKER_UNIVERSE_CACHE)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     try:
-        return service.validate_ticker(ticker)
+        return service.validate(ticker)
     except RuntimeError as exc:
         message = str(exc)
         if "Stock price not found" in message:
             return False
         raise HTTPException(status_code=429, detail=message)
-
-def _get_asset_type(ticker: str, db: Session) -> str:
-    try:
-        service = get_market_data_service(db, _av_throttle)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    try:
-        return service.get_asset_type(ticker)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=429, detail=str(exc))
 
 @app.post("/api/holdings", response_model=HoldingResponse)
 def upsert_holding(
@@ -249,8 +210,16 @@ def upsert_holding(
     if not _validate_ticker(ticker_upper, db):
         raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker_upper}")
 
+    try:
+        market_data = get_market_data_service(db, _av_throttle)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
     service = get_holdings_service(db)
-    asset_type = _get_asset_type(ticker_upper, db)
+    try:
+        asset_type = market_data.get_asset_type(ticker_upper)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
     record = service.add_or_merge(
         current_user.id,
         HoldingInput(
@@ -302,12 +271,20 @@ def bulk_upsert_holdings(
         )
         for item in payload.holdings
     ])
+    try:
+        market_data = get_market_data_service(db, _av_throttle)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
     asset_types: dict[str, str] = {}
     for item in normalized_inputs:
         ticker = item.ticker.upper()
         if not _validate_ticker(ticker, db):
             raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
-        asset_types[ticker] = _get_asset_type(ticker, db)
+        try:
+            asset_types[ticker] = market_data.get_asset_type(ticker)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=429, detail=str(exc))
 
     service = get_holdings_service(db)
     inputs = [

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
+import os
 
 from .providers import get_market_data_provider, get_transcript_provider
 from .profile import ProfileService
@@ -9,6 +10,7 @@ from .transcripts import TranscriptService
 from .holdings import HoldingsService
 from .analysis import AnalysisService
 from .portfolio_analysis import PortfolioAnalysisService
+from .tickers import TickerValidationService, load_ticker_universe, TickerUniverseCache
 from .sqlalchemy_repositories import (
     SqlAlchemyUserRepository,
     SqlAlchemyProfileRepository,
@@ -50,4 +52,32 @@ def get_portfolio_analysis_service(db: Session, throttle) -> PortfolioAnalysisSe
         SqlAlchemyStockDataRepository(db),
         get_market_data_service(db, throttle),
         get_analysis_service(db)
+    )
+
+
+def get_ticker_validation_service(
+    db: Session,
+    throttle,
+    cache: dict[str, TickerUniverseCache],
+) -> TickerValidationService:
+    path = os.getenv("TICKER_UNIVERSE_PATH")
+
+    def load_cached(path_value: str) -> TickerUniverseCache | None:
+        cached = cache.get(path_value)
+        if cached:
+            try:
+                stat = os.stat(path_value)
+                if cached.mtime == stat.st_mtime:
+                    return cached
+            except FileNotFoundError:
+                return None
+        refreshed = load_ticker_universe(path_value)
+        if refreshed:
+            cache[path_value] = refreshed
+        return refreshed
+
+    return TickerValidationService(
+        get_market_data_service(db, throttle),
+        path,
+        load_cached
     )

@@ -25,6 +25,7 @@ from .market_data import MarketDataService
 from .holdings import HoldingsService, HoldingInput, normalize_bulk_holdings
 from .analysis import AnalysisService
 from .portfolio_analysis import PortfolioAnalysisService, AnalysisUser, PortfolioAnalysisResult
+from .tickers import TickerValidationService, TickerUniverseCache, load_ticker_universe
 from .profile import ProfileService, ProfileCreateInput, ProfileUpdateInput
 from .profile import build_profile_ai_analysis
 from .profile import compute_risk_tolerance
@@ -36,6 +37,7 @@ from .factories import (
     get_holdings_service,
     get_analysis_service,
     get_portfolio_analysis_service,
+    get_ticker_validation_service,
 )
 from .sqlalchemy_repositories import (
     SqlAlchemyTranscriptRepository,
@@ -73,6 +75,9 @@ __all__ = [
     "PortfolioAnalysisService",
     "AnalysisUser",
     "PortfolioAnalysisResult",
+    "TickerValidationService",
+    "TickerUniverseCache",
+    "load_ticker_universe",
     "ProfileService",
     "ProfileCreateInput",
     "ProfileUpdateInput",
@@ -85,6 +90,7 @@ __all__ = [
     "get_holdings_service",
     "get_analysis_service",
     "get_portfolio_analysis_service",
+    "get_ticker_validation_service",
     "SqlAlchemyTranscriptRepository",
     "SqlAlchemyStockDataRepository",
     "SqlAlchemyHoldingsRepository",
