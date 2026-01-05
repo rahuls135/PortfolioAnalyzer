@@ -238,7 +238,9 @@ def update_holding(
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    print("updating holding...")
     service = get_holdings_service(db)
+    print("got service")
     try:
         record = service.update_holding(
             current_user.id,
@@ -249,6 +251,7 @@ def update_holding(
                 avg_price=update.avg_price
             )
         )
+        print("service updated holding")
     except ValueError:
         raise HTTPException(status_code=404, detail="Holding not found")
     return record

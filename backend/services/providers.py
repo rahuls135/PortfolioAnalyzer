@@ -40,6 +40,7 @@ class AlphaVantageTranscriptProvider:
     def get_transcript(self, ticker: str, quarter: str) -> EarningsTranscript:
         import requests
 
+        print(f"Alpha Vantage request: EARNINGS_CALL_TRANSCRIPT {ticker} {quarter}")
         self.throttle()
         url = (
             "https://www.alphavantage.co/query"
@@ -73,6 +74,7 @@ class AlphaVantageMarketDataProvider:
     def get_quote(self, ticker: str) -> MarketQuote:
         import requests
 
+        print(f"Alpha Vantage request: GLOBAL_QUOTE {ticker}")
         self.throttle()
         url = (
             "https://www.alphavantage.co/query"
@@ -91,6 +93,7 @@ class AlphaVantageMarketDataProvider:
     def get_overview(self, ticker: str) -> MarketQuote:
         import requests
 
+        print(f"Alpha Vantage request: OVERVIEW {ticker}")
         self.throttle()
         url = (
             "https://www.alphavantage.co/query"
