@@ -26,9 +26,7 @@ from services import (
     get_holdings_service,
     get_analysis_service,
     get_portfolio_analysis_service,
-    get_ticker_validation_service,
     AnalysisUser,
-    TickerUniverseCache,
 )
 
 app = FastAPI()
@@ -172,6 +170,11 @@ def _market_closed_cache_valid(last_updated_utc: datetime, now_utc: datetime) ->
     last_et = last_updated_utc.astimezone(MARKET_TZ)
     return last_et >= last_close and now_et < next_open
 
+def _cache_valid(last_updated: datetime, now_time: datetime) -> bool:
+    if last_updated.tzinfo is None:
+        last_updated = last_updated.replace(tzinfo=timezone.utc)
+    return (now_time - last_updated).total_seconds() < 86400 or _market_closed_cache_valid(last_updated, now_time)
+
 _AV_LOCK = threading.Lock()
 _AV_LAST_CALL = 0.0
 
@@ -184,15 +187,15 @@ def _av_throttle(min_interval_seconds: float = 1.1) -> None:
             time_module.sleep(wait_for)
         _AV_LAST_CALL = time_module.monotonic()
 
-_TICKER_UNIVERSE_CACHE: dict[str, TickerUniverseCache] = {}
-
 def _validate_ticker(ticker: str, db: Session) -> bool:
     try:
-        service = get_ticker_validation_service(db, _av_throttle, _TICKER_UNIVERSE_CACHE)
+        service = get_market_data_service(db, _av_throttle)
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     try:
-        return service.validate(ticker)
+        now_utc = datetime.now(timezone.utc)
+        service.get_quote(ticker, now_utc, _cache_valid)
+        return True
     except RuntimeError as exc:
         message = str(exc)
         if "Stock price not found" in message:
@@ -207,9 +210,6 @@ def upsert_holding(
 ):
     ticker_upper = holding_in.ticker.upper()
 
-    if not _validate_ticker(ticker_upper, db):
-        raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker_upper}")
-
     try:
         market_data = get_market_data_service(db, _av_throttle)
     except RuntimeError as exc:
@@ -217,9 +217,14 @@ def upsert_holding(
 
     service = get_holdings_service(db)
     try:
-        asset_type = market_data.get_asset_type(ticker_upper)
+        now_utc = datetime.now(timezone.utc)
+        quote, _ = market_data.get_quote(ticker_upper, now_utc, _cache_valid)
+        asset_type = quote.asset_type
     except RuntimeError as exc:
-        raise HTTPException(status_code=429, detail=str(exc))
+        message = str(exc)
+        if "Stock price not found" in message:
+            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker_upper}")
+        raise HTTPException(status_code=429, detail=message)
     record = service.add_or_merge(
         current_user.id,
         HoldingInput(
@@ -282,12 +287,15 @@ def bulk_upsert_holdings(
     asset_types: dict[str, str] = {}
     for item in normalized_inputs:
         ticker = item.ticker.upper()
-        if not _validate_ticker(ticker, db):
-            raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
         try:
-            asset_types[ticker] = market_data.get_asset_type(ticker)
+            now_utc = datetime.now(timezone.utc)
+            quote, _ = market_data.get_quote(ticker, now_utc, _cache_valid)
+            asset_types[ticker] = quote.asset_type
         except RuntimeError as exc:
-            raise HTTPException(status_code=429, detail=str(exc))
+            message = str(exc)
+            if "Stock price not found" in message:
+                raise HTTPException(status_code=400, detail=f"Invalid ticker: {ticker}")
+            raise HTTPException(status_code=429, detail=message)
 
     service = get_holdings_service(db)
     inputs = [
@@ -359,11 +367,6 @@ def get_stock_data(
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     now_utc = datetime.now(timezone.utc)
-
-    def _cache_valid(last_updated: datetime, now_time: datetime) -> bool:
-        if last_updated.tzinfo is None:
-            last_updated = last_updated.replace(tzinfo=timezone.utc)
-        return (now_time - last_updated).total_seconds() < 86400 or _market_closed_cache_valid(last_updated, now_time)
 
     try:
         quote, cached = service.get_quote(ticker, now_utc, _cache_valid)
