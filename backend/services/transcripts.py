@@ -22,9 +22,25 @@ def _normalize_transcript_text(text: str | list | dict) -> str:
     if not text:
         return ""
     if isinstance(text, dict):
+        for key in ("content", "text", "transcript"):
+            value = text.get(key)
+            if value:
+                return _normalize_transcript_text(value)
         return json.dumps(text)
     if isinstance(text, list):
-        return " ".join(str(item) for item in text if item)
+        parts = []
+        for item in text:
+            if not item:
+                continue
+            if isinstance(item, dict):
+                content = item.get("content") or item.get("text") or item.get("transcript")
+                if content:
+                    parts.append(str(content))
+                else:
+                    parts.append(json.dumps(item))
+            else:
+                parts.append(str(item))
+        return " ".join(parts).strip()
     return str(text)
 
 

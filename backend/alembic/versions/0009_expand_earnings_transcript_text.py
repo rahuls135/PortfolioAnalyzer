@@ -1,6 +1,6 @@
 """expand earnings transcript text columns
 
-Revision ID: 0009_expand_earnings_transcript_text
+Revision ID: 0009_expand_transcripts
 Revises: 0008_add_profile_analysis_cache
 Create Date: 2025-01-02
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "0009_expand_earnings_transcript_text"
+revision = "0009_expand_transcripts"
 down_revision = "0008_add_profile_analysis_cache"
 branch_labels = None
 depends_on = None
