@@ -79,6 +79,7 @@ export interface EarningsTranscriptSummary {
   ticker: string;
   quarter: string;
   summary: string;
+  transcript: string;
   fetched_at: string | null;
 }
 
@@ -173,8 +174,8 @@ export const api = {
   getCachedAnalysis: () =>
     apiClient.get<CachedAnalysis>(`/api/analysis/cached`),
 
-  cacheTranscriptSummaries: (quarter: string, summaries: Record<string, string>) =>
-    apiClient.post(`/api/analysis/cached/transcripts`, { quarter, summaries }),
+  cacheTranscriptSummaries: (quarter: string, transcripts: Record<string, string>) =>
+    apiClient.post(`/api/analysis/cached/transcripts`, { quarter, transcripts }),
   
   getStockPrice: (ticker: string) => 
     apiClient.get(`/api/stocks/${ticker}`)

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, UniqueConstraint, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from database import Base
@@ -84,7 +84,7 @@ class EarningsTranscript(Base):
     id = Column(Integer, primary_key=True, index=True)
     ticker = Column(String, index=True)
     quarter = Column(String, index=True)
-    transcript = Column(String)
-    summary = Column(String)
+    transcript = Column(Text)
+    summary = Column(Text)
     fetched_at = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -253,6 +253,16 @@ function App() {
               </div>
 
               <div className="form-group">
+                <label>Years Until Retirement:</label>
+                <input
+                  type="number"
+                  value={settingsRetirementYears}
+                  onChange={(e) => setSettingsRetirementYears(e.target.value)}
+                  required
+                />
+              </div>
+              {settingsError && <div className="error">{settingsError}</div>}
+              <div className="form-group">
                 <label>Risk Tolerance:</label>
                 <select
                   value={settingsRiskTolerance}
@@ -266,21 +276,10 @@ function App() {
                   <option value="aggressive">Aggressive</option>
                 </select>
               </div>
-              
-              <div className="form-group">
-                <label>Years Until Retirement:</label>
-                <input
-                  type="number"
-                  value={settingsRetirementYears}
-                  onChange={(e) => setSettingsRetirementYears(e.target.value)}
-                  required
-                />
-              </div>
-              {settingsError && <div className="error">{settingsError}</div>}
               <div className="risk-mode-bar">
                 <button
                   type="button"
-                  className="btn-secondary"
+                  className="btn-primary btn-with-icon"
                   onClick={() => {
                     const parsedAge = parseInt(settingsAge, 10);
                     const parsedIncome = parseFloat(settingsIncome);
@@ -306,6 +305,29 @@ function App() {
                     setSettingsRiskAssessmentMode('ai');
                   }}
                 >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path
+                      d="M4 16l7-7"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M11 9l2 2"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M14.5 3.5l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
                   Use AI Insights
                 </button>
                 <span className="muted">
@@ -317,7 +339,7 @@ function App() {
                 <button type="button" className="btn-cancel" onClick={closeSettings}>
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary" disabled={settingsSaving}>
+                <button type="submit" className="btn-neutral" disabled={settingsSaving}>
                   {settingsSaving ? 'Saving...' : 'Save Settings'}
                 </button>
               </div>

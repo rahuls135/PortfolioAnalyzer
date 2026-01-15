@@ -109,6 +109,7 @@ class EarningsTranscriptResponse(BaseModel):
     ticker: str
     quarter: str
     summary: str
+    transcript: str
     fetched_at: Optional[datetime] = None
 
 class AnalysisCacheResponse(BaseModel):
@@ -120,7 +121,7 @@ class AnalysisCacheResponse(BaseModel):
 
 class AnalysisTranscriptCache(BaseModel):
     quarter: str
-    summaries: dict
+    transcripts: dict
 
 @app.get("/")
 def read_root():
@@ -508,7 +509,7 @@ def cache_transcripts(
     db: Session = Depends(get_db),
 ):
     analysis_service = get_analysis_service(db)
-    analysis_service.cache_transcripts(current_user.id, payload.quarter, payload.summaries)
+    analysis_service.cache_transcripts(current_user.id, payload.quarter, payload.transcripts)
     return {"status": "ok"}
 
 @app.get("/api/users/me", response_model=UserResponse)
@@ -634,5 +635,6 @@ def get_earnings_transcript(
         "ticker": record.ticker,
         "quarter": record.quarter,
         "summary": record.summary or "",
+        "transcript": record.transcript or "",
         "fetched_at": record.fetched_at
     }

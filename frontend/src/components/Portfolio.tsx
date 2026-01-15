@@ -36,12 +36,7 @@ export default function Portfolio() {
   const [nextAvailableAt, setNextAvailableAt] = useState<string | null>(null);
   const [lastAnalysisAt, setLastAnalysisAt] = useState<string | null>(null);
   const [pricesCached, setPricesCached] = useState(false);
-  const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
-  const [importErrors, setImportErrors] = useState<string[]>([]);
-  const [importLoading, setImportLoading] = useState(false);
-  const [importRows, setImportRows] = useState<Array<{ id: number; ticker: string; shares: string; avg_price: string }>>([
-    { id: 1, ticker: '', shares: '', avg_price: '' }
-  ]);
+  const [newHoldingRows, setNewHoldingRows] = useState<Array<{ id: number; ticker: string; shares: string; avg_price: string }>>([]);
   
   // Edit state
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -230,17 +225,17 @@ export default function Portfolio() {
             api.getEarningsTranscript(holding.ticker, quarter, 2)
           )
         );
-        const summaries: Record<string, string> = {};
+        const transcripts: Record<string, string> = {};
         results.forEach((result) => {
           if (result.status === 'fulfilled') {
-            summaries[result.value.data.ticker] = result.value.data.summary;
+            transcripts[result.value.data.ticker] = result.value.data.transcript || result.value.data.summary;
           }
         });
-        setTranscriptSummaries(summaries);
-        setCachedTranscripts(summaries);
+        setTranscriptSummaries(transcripts);
+        setCachedTranscripts(transcripts);
         setCachedTranscriptsQuarter(quarter);
-        if (Object.keys(summaries).length > 0) {
-          api.cacheTranscriptSummaries(quarter, summaries).catch(() => null);
+        if (Object.keys(transcripts).length > 0) {
+          api.cacheTranscriptSummaries(quarter, transcripts).catch(() => null);
         }
         if (results.some((result) => result.status === 'rejected')) {
           setTranscriptsError('Some transcripts could not be loaded.');
@@ -313,76 +308,65 @@ export default function Portfolio() {
     }
   };
 
-  const parseImportRows = () => {
-    const preview: Holding[] = [];
-    const errors: string[] = [];
-
-    importRows.forEach((row, index) => {
-      const tickerRaw = row.ticker.trim();
-      if (!tickerRaw && !row.shares && !row.avg_price) {
-        return;
-      }
-      const sharesValue = parseFloat(row.shares);
-      const priceValue = parseFloat(row.avg_price);
-      if (!tickerRaw || Number.isNaN(sharesValue) || Number.isNaN(priceValue)) {
-        errors.push(`Row ${index + 1}: enter ticker, shares, and avg price.`);
-        return;
-      }
-      preview.push({
-        id: row.id,
-        ticker: tickerRaw.toUpperCase(),
-        shares: sharesValue,
-        avg_price: priceValue
-      });
-    });
-
-    setImportErrors(errors);
-    return { preview, errors };
+  const isValidNumberInput = (value: string) => {
+    if (!value.trim()) {
+      return false;
+    }
+    return !Number.isNaN(Number(value));
   };
 
-  const handleImportHoldings = async () => {
-    const { preview, errors } = parseImportRows();
-    if (preview.length === 0 || errors.length > 0) {
+  const handleAddHoldingRow = () => {
+    setNewHoldingRows((prev) => [
+      ...prev,
+      { id: Date.now(), ticker: '', shares: '', avg_price: '' }
+    ]);
+  };
+
+  const updateNewHoldingRow = (rowId: number, updates: Partial<{ ticker: string; shares: string; avg_price: string }>) => {
+    setNewHoldingRows((prev) => prev.map((row) => (
+      row.id === rowId ? { ...row, ...updates } : row
+    )));
+  };
+
+  const removeNewHoldingRow = (rowId: number) => {
+    setNewHoldingRows((prev) => prev.filter((row) => row.id !== rowId));
+  };
+
+  const handleCreateHolding = async (row: { id: number; ticker: string; shares: string; avg_price: string }) => {
+    const ticker = row.ticker.trim().toUpperCase();
+    const shares = parseFloat(row.shares);
+    const avgPrice = parseFloat(row.avg_price);
+    if (!ticker || Number.isNaN(shares) || Number.isNaN(avgPrice)) {
+      alert('Enter a ticker, shares, and avg price.');
       return;
     }
 
-    setImportLoading(true);
     try {
-      await api.bulkUpsertHoldings({
-        mode: importMode,
-        holdings: preview.map(({ ticker, shares, avg_price }) => ({
-          ticker,
-          shares,
-          avg_price
-        }))
-      });
+      await api.addHolding({ ticker, shares, avg_price: avgPrice });
       await loadHoldings();
       setAnalysisStale(true);
-      setImportRows([{ id: Date.now(), ticker: '', shares: '', avg_price: '' }]);
-      setImportErrors([]);
+      removeNewHoldingRow(row.id);
     } catch (error) {
-      alert('Import failed: ' + (error as Error).message);
-    } finally {
-      setImportLoading(false);
+      alert('Error adding holding: ' + (error as Error).message);
     }
-  };
-
-  const addImportRowAfter = (rowId: number) => {
-    const newRow = { id: Date.now(), ticker: '', shares: '', avg_price: '' };
-    setImportRows((prev) => {
-      const index = prev.findIndex((row) => row.id === rowId);
-      if (index === -1) {
-        return [...prev, newRow];
-      }
-      const next = [...prev];
-      next.splice(index + 1, 0, newRow);
-      return next;
-    });
   };
 
   const handleRunAnalysis = async () => {
     await loadAnalysis();
   };
+
+  const isNewHoldingRowValid = (row: { ticker: string; shares: string; avg_price: string }) => (
+    row.ticker.trim() !== ''
+    && isValidNumberInput(row.shares)
+    && isValidNumberInput(row.avg_price)
+  );
+
+  const isEditRowValid = editingId === null
+    || (isValidNumberInput(editShares) && isValidNumberInput(editAvgPrice));
+
+  const hasPendingRows = editingId !== null || newHoldingRows.length > 0;
+  const pendingRowsValid = isEditRowValid && newHoldingRows.every(isNewHoldingRowValid);
+  const showAddRowIcon = holdings.length > 0 && (!hasPendingRows || pendingRowsValid);
 
   const formatDuration = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -420,132 +404,6 @@ export default function Portfolio() {
       )}
 
       <div className="card">
-        <h2>Add Holdings</h2>
-        <div className="advanced-import">
-          <p className="muted">Add rows for each holding and import all at once.</p>
-          <table className="import-table">
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Shares</th>
-                <th>Avg Price</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-                {importRows.map((row, index) => (
-                  <tr key={row.id}>
-                  <td>
-                    <input
-                      type="text"
-                      value={row.ticker}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setImportRows((prev) => prev.map((item) => (
-                          item.id === row.id ? { ...item, ticker: value } : item
-                        )));
-                      }}
-                      placeholder="AAPL"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={row.shares}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setImportRows((prev) => prev.map((item) => (
-                          item.id === row.id ? { ...item, shares: value } : item
-                        )));
-                      }}
-                      placeholder="10"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={row.avg_price}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setImportRows((prev) => prev.map((item) => (
-                          item.id === row.id ? { ...item, avg_price: value } : item
-                        )));
-                      }}
-                      placeholder="150.25"
-                    />
-                  </td>
-                    <td>
-                      <div className="import-row-actions">
-                        {importRows.length > 1 && index !== 0 ? (
-                          <button
-                            type="button"
-                            className="btn-delete"
-                            onClick={() => setImportRows((prev) => prev.filter((item) => item.id !== row.id))}
-                            aria-label="Remove row"
-                          >
-                            ✕
-                          </button>
-                        ) : (
-                          <span className="import-row-spacer" />
-                        )}
-                        {index === importRows.length - 1
-                        && row.ticker.trim()
-                        && row.shares.trim()
-                        && row.avg_price.trim() ? (
-                          <button
-                            type="button"
-                            className="btn-save"
-                            onClick={() => addImportRowAfter(row.id)}
-                            aria-label="Add row"
-                          >
-                            +
-                          </button>
-                        ) : (
-                          <span className="import-row-spacer" />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="form-row">
-              <button
-                type="button"
-                className={`btn-secondary ${importMode === 'merge' ? 'btn-secondary-active' : ''}`}
-                onClick={() => setImportMode('merge')}
-            >
-              Merge Import
-            </button>
-            <button
-              type="button"
-              className={`btn-secondary ${importMode === 'replace' ? 'btn-secondary-active' : ''}`}
-              onClick={() => setImportMode('replace')}
-            >
-              Replace Import
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={handleImportHoldings}
-              disabled={importLoading}
-            >
-              {importLoading ? 'Importing...' : 'Import Portfolio'}
-            </button>
-          </div>
-          {importErrors.length > 0 && (
-            <div className="error">
-              {importErrors.map((err) => (
-                <div key={err}>{err}</div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="card">
         <div className="card-header">
           <h2>Your Holdings</h2>
           <button
@@ -557,8 +415,8 @@ export default function Portfolio() {
             Sync Holdings
           </button>
         </div>
-        {holdings.length === 0 ? (
-          <p>No holdings yet. Add your first stock above!</p>
+        {holdings.length === 0 && newHoldingRows.length === 0 ? (
+          <p>No holdings yet. Add your first stock!</p>
         ) : (
           <table>
             <thead>
@@ -569,7 +427,28 @@ export default function Portfolio() {
                 <th>Current Price</th>
                 <th>Current Value</th>
                 <th>Gain/Loss</th>
-                <th>Actions</th>
+                <th className="actions-header">
+                  <span>Actions</span>
+                  {showAddRowIcon && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      onClick={handleAddHoldingRow}
+                      aria-label="Add row"
+                      title="Add row"
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path
+                          d="M10 4v12M4 10h12"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -601,15 +480,36 @@ export default function Portfolio() {
                       <td>
                         <button 
                           onClick={() => handleSaveEdit(holding)}
-                          className="btn-save"
+                          className="btn-save action-btn"
+                          aria-label="Save changes"
+                          title="Save changes"
                         >
-                          Save
+                          <svg viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              d="M5 10.5l3 3 7-7"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
                         </button>
                         <button 
                           onClick={handleCancelEdit}
-                          className="btn-cancel"
+                          className="btn-cancel action-btn"
+                          aria-label="Cancel edit"
+                          title="Cancel edit"
                         >
-                          Cancel
+                          <svg viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              d="M5 5l10 10M15 5L5 15"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                            />
+                          </svg>
                         </button>
                       </td>
                     </>
@@ -643,38 +543,167 @@ export default function Portfolio() {
                       <td>
                         <button 
                           onClick={() => handleEdit(holding)}
-                          className="btn-edit"
+                          className="btn-edit action-btn"
                           aria-label="Edit holding"
+                          title="Edit holding"
                         >
-                          ✎
+                          <svg viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              d="M13.5 4.5l2 2-8.5 8.5-3 1 1-3 8.5-8.5z"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="M12 6l2 2"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                            />
+                          </svg>
                         </button>
                         <button 
                           onClick={() => handleDelete(holding.id, holding.ticker)}
-                          className="btn-delete"
+                          className="btn-delete action-btn"
                           aria-label="Delete holding"
+                          title="Delete holding"
                         >
-                          🗑
+                          <svg viewBox="0 0 20 20" aria-hidden="true">
+                            <path
+                              d="M6 6h8M8 6V5h4v1M7 6l.8 9h4.4L13 6"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
                         </button>
                       </td>
                     </>
                   )}
                 </tr>
               ))}
+              {newHoldingRows.map((row) => (
+                <tr key={`new-${row.id}`}>
+                  <td>
+                    <input
+                      type="text"
+                      value={row.ticker}
+                      onChange={(e) => updateNewHoldingRow(row.id, { ticker: e.target.value })}
+                      className="edit-input"
+                      placeholder="AAPL"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={row.shares}
+                      onChange={(e) => updateNewHoldingRow(row.id, { shares: e.target.value })}
+                      className="edit-input"
+                      placeholder="10"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={row.avg_price}
+                      onChange={(e) => updateNewHoldingRow(row.id, { avg_price: e.target.value })}
+                      className="edit-input"
+                      placeholder="150.25"
+                    />
+                  </td>
+                  <td colSpan={3}>-</td>
+                  <td>
+                    <button
+                      onClick={() => handleCreateHolding(row)}
+                      className="btn-save action-btn"
+                      aria-label="Add holding"
+                      title="Add holding"
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path
+                          d="M5 10.5l3 3 7-7"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => removeNewHoldingRow(row.id)}
+                      className="btn-cancel action-btn"
+                      aria-label="Cancel add"
+                      title="Cancel add"
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path
+                          d="M5 5l10 10M15 5L5 15"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
+        )}
+        {holdings.length === 0 && (
+          <div className="form-row">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleAddHoldingRow}
+            >
+              Add Row
+            </button>
+          </div>
         )}
 
         <div className="analysis-actions">
           <button
             onClick={handleRunAnalysis}
-            className="btn-primary"
+            className="btn-primary btn-with-icon"
             disabled={holdings.length === 0 || analysisLoading || cooldownRemainingSeconds > 0}
           >
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path
+                d="M4 16l7-7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+              <path
+                d="M11 9l2 2"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+              <path
+                d="M14.5 3.5l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+            </svg>
             {analysisLoading ? 'Analyzing...' : 'Run Analysis'}
           </button>
           {analysisError && <span className="error">{analysisError}</span>}
           {analysisStale && portfolioAnalysis && (
-            <span className="warning">Holdings changed since the last analysis.</span>
+            <span className="warning">Holdings have been edited since the last analysis.</span>
           )}
           {lastAnalysisAt && (
             <span className="muted">
@@ -693,12 +722,12 @@ export default function Portfolio() {
         <>
           <AnalysisMetrics metrics={portfolioAnalysis.metrics} />
           <Analysis portfolioAnalysis={portfolioAnalysis} />
-          <div className="card">
-            <h2>Earnings Call Summaries</h2>
+        <div className="card">
+            <h2>Earnings Call Transcripts</h2>
             {transcriptsLoading && <span className="muted">Loading transcripts...</span>}
             {transcriptsError && <div className="error">{transcriptsError}</div>}
             {!transcriptsLoading && Object.keys(transcriptSummaries).length === 0 && (
-              <span className="muted">No summaries available yet.</span>
+              <span className="muted">No transcripts available yet.</span>
             )}
             {Object.entries(transcriptSummaries).map(([ticker, summary]) => (
               <div key={ticker} className="transcript-summary">
@@ -726,12 +755,12 @@ export default function Portfolio() {
             </div>
           </div>
           <div className="card">
-            <h2>Earnings Call Summaries</h2>
+            <h2>Earnings Call Transcripts</h2>
             {cachedTranscriptsQuarter && (
               <span className="muted">Quarter: {cachedTranscriptsQuarter}</span>
             )}
             {Object.keys(cachedTranscripts).length === 0 && (
-              <span className="muted">No summaries available yet.</span>
+              <span className="muted">No transcripts available yet.</span>
             )}
             {Object.entries(cachedTranscripts).map(([ticker, summary]) => (
               <div key={ticker} className="transcript-summary">
