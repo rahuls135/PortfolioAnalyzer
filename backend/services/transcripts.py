@@ -44,15 +44,81 @@ def _normalize_transcript_text(text: str | list | dict) -> str:
     return str(text)
 
 
-def _summarize_transcript(text: str | list | dict, max_sentences: int = 4, max_chars: int = 800) -> str:
+def _extract_key_points(text: str) -> list[str]:
+    keywords = [
+        "revenue",
+        "guidance",
+        "outlook",
+        "forecast",
+        "margin",
+        "gross margin",
+        "operating margin",
+        "eps",
+        "earnings",
+        "profit",
+        "cash flow",
+        "free cash flow",
+        "capex",
+        "debt",
+        "buyback",
+        "dividend",
+        "growth",
+        "headwind",
+        "tailwind",
+        "subscriber",
+        "pricing",
+        "demand",
+        "pipeline",
+        "backlog",
+        "bookings",
+        "guidance",
+        "quarter",
+        "year",
+    ]
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    points: list[str] = []
+    seen: set[str] = set()
+    for sentence in sentences:
+        clean = sentence.strip()
+        if len(clean) < 20:
+            continue
+        lowered = clean.lower()
+        if not any(keyword in lowered for keyword in keywords):
+            continue
+        normalized = re.sub(r"\s+", " ", lowered)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        points.append(clean)
+        if len(points) >= 6:
+            break
+    if len(points) < 3:
+        for sentence in sentences:
+            clean = sentence.strip()
+            if len(clean) < 20:
+                continue
+            normalized = re.sub(r"\s+", " ", clean.lower())
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            points.append(clean)
+            if len(points) >= 3:
+                break
+    return points
+
+
+def _summarize_transcript(text: str | list | dict, max_chars: int = 240) -> str:
     normalized = _normalize_transcript_text(text)
     if not normalized:
         return ""
-    sentences = re.split(r"(?<=[.!?])\s+", normalized.strip())
-    summary = " ".join(sentences[:max_sentences]).strip()
-    if len(summary) > max_chars:
-        summary = summary[:max_chars].rstrip() + "..."
-    return summary
+    points = _extract_key_points(normalized)
+    bullets = []
+    for point in points:
+        trimmed = point
+        if len(trimmed) > max_chars:
+            trimmed = trimmed[:max_chars].rstrip() + "..."
+        bullets.append(f"- {trimmed}")
+    return "\n".join(bullets).strip()
 
 
 class TranscriptService:

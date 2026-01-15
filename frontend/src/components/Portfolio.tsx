@@ -225,17 +225,17 @@ export default function Portfolio() {
             api.getEarningsTranscript(holding.ticker, quarter, 2)
           )
         );
-        const transcripts: Record<string, string> = {};
+        const summaries: Record<string, string> = {};
         results.forEach((result) => {
           if (result.status === 'fulfilled') {
-            transcripts[result.value.data.ticker] = result.value.data.transcript || result.value.data.summary;
+            summaries[result.value.data.ticker] = result.value.data.summary;
           }
         });
-        setTranscriptSummaries(transcripts);
-        setCachedTranscripts(transcripts);
+        setTranscriptSummaries(summaries);
+        setCachedTranscripts(summaries);
         setCachedTranscriptsQuarter(quarter);
-        if (Object.keys(transcripts).length > 0) {
-          api.cacheTranscriptSummaries(quarter, transcripts).catch(() => null);
+        if (Object.keys(summaries).length > 0) {
+          api.cacheTranscriptSummaries(quarter, summaries).catch(() => null);
         }
         if (results.some((result) => result.status === 'rejected')) {
           setTranscriptsError('Some transcripts could not be loaded.');
@@ -723,11 +723,11 @@ export default function Portfolio() {
           <AnalysisMetrics metrics={portfolioAnalysis.metrics} />
           <Analysis portfolioAnalysis={portfolioAnalysis} />
         <div className="card">
-            <h2>Earnings Call Transcripts</h2>
+            <h2>Earnings Call Key Points</h2>
             {transcriptsLoading && <span className="muted">Loading transcripts...</span>}
             {transcriptsError && <div className="error">{transcriptsError}</div>}
             {!transcriptsLoading && Object.keys(transcriptSummaries).length === 0 && (
-              <span className="muted">No transcripts available yet.</span>
+              <span className="muted">No transcript summaries available yet.</span>
             )}
             {Object.entries(transcriptSummaries).map(([ticker, summary]) => (
               <div key={ticker} className="transcript-summary">
@@ -755,12 +755,12 @@ export default function Portfolio() {
             </div>
           </div>
           <div className="card">
-            <h2>Earnings Call Transcripts</h2>
+            <h2>Earnings Call Key Points</h2>
             {cachedTranscriptsQuarter && (
               <span className="muted">Quarter: {cachedTranscriptsQuarter}</span>
             )}
             {Object.keys(cachedTranscripts).length === 0 && (
-              <span className="muted">No transcripts available yet.</span>
+              <span className="muted">No transcript summaries available yet.</span>
             )}
             {Object.entries(cachedTranscripts).map(([ticker, summary]) => (
               <div key={ticker} className="transcript-summary">

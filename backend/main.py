@@ -121,7 +121,7 @@ class AnalysisCacheResponse(BaseModel):
 
 class AnalysisTranscriptCache(BaseModel):
     quarter: str
-    transcripts: dict
+    summaries: dict
 
 @app.get("/")
 def read_root():
@@ -509,7 +509,7 @@ def cache_transcripts(
     db: Session = Depends(get_db),
 ):
     analysis_service = get_analysis_service(db)
-    analysis_service.cache_transcripts(current_user.id, payload.quarter, payload.transcripts)
+    analysis_service.cache_transcripts(current_user.id, payload.quarter, payload.summaries)
     return {"status": "ok"}
 
 @app.get("/api/users/me", response_model=UserResponse)

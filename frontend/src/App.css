@@ -370,6 +370,7 @@ table th {
   margin: 0.5rem 0 0;
   color: var(--muted);
   line-height: 1.6;
+  white-space: pre-line;
 }
 .header-actions {
   display: flex;
