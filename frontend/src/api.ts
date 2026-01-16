@@ -119,6 +119,10 @@ export interface PortfolioAnalysis {
   };
 }
 
+export interface PortfolioMetricsResponse {
+  metrics: PortfolioAnalysis['metrics'];
+}
+
 export interface CachedAnalysis {
   ai_analysis: string;
   analysis_meta: {
@@ -170,6 +174,9 @@ export const api = {
   
   analyzePortfolio: () => 
     apiClient.get<PortfolioAnalysis>(`/api/analysis`),
+
+  getPortfolioMetrics: () =>
+    apiClient.get<PortfolioMetricsResponse>(`/api/metrics`),
 
   getCachedAnalysis: () =>
     apiClient.get<CachedAnalysis>(`/api/analysis/cached`),

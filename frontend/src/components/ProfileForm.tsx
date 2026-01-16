@@ -53,7 +53,6 @@ export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
       });
       
       onProfileCreated(response.data.id);
-      alert('Profile created successfully!');
     } catch (error: any) {
       alert('Error creating profile: ' + error.message);
     }
@@ -107,50 +106,56 @@ export default function ProfileForm({ onProfileCreated }: ProfileFormProps) {
         <button type="submit" className="btn-primary">
           Create Profile
         </button>
-        <div className="form-group">
-          <label>Risk Tolerance:</label>
-          <select
-            value={riskTolerance}
-            onChange={(e) => {
-              setRiskTolerance(e.target.value);
-              setRiskAssessmentMode('manual');
-            }}
-          >
-            <option value="conservative">Conservative</option>
-            <option value="moderate">Moderate</option>
-            <option value="aggressive">Aggressive</option>
-          </select>
-        </div>
+        <div className="card-section">
+          <div className="section-title">Risk Preference</div>
+          <div className="form-group">
+            <label>Pick your risk level:</label>
+            <select
+              value={riskTolerance}
+              onChange={(e) => {
+                setRiskTolerance(e.target.value);
+                setRiskAssessmentMode('manual');
+              }}
+            >
+              <option value="conservative">Conservative</option>
+              <option value="moderate">Moderate</option>
+              <option value="aggressive">Aggressive</option>
+            </select>
+          </div>
 
-        <div className="risk-mode-bar">
-          <button type="button" className="btn-primary btn-with-icon" onClick={handleAiRecommendation}>
-            <svg viewBox="0 0 20 20" aria-hidden="true">
-              <path
-                d="M4 16l7-7"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-              <path
-                d="M11 9l2 2"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-              <path
-                d="M14.5 3.5l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                strokeLinejoin="round"
-              />
-            </svg>
-            Use AI Insights
-          </button>
+          <div className="risk-mode-bar">
+            <button type="button" className="btn-primary btn-with-icon" onClick={handleAiRecommendation}>
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path
+                  d="M4 16l7-7"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M11 9l2 2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M14.5 3.5l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Get AI Suggestion
+            </button>
+            <span className="muted">
+              Mode: {riskAssessmentMode === 'ai' ? 'AI insights' : 'Manual'}
+            </span>
+          </div>
           <span className="muted">
-            Mode: {riskAssessmentMode === 'ai' ? 'AI insights' : 'Manual'}
+            AI suggests a risk tolerance based on age, horizon, and obligations. You can always adjust it manually.
           </span>
         </div>
       </form>

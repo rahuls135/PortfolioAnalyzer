@@ -205,3 +205,61 @@ Risk Assessment: Your {user.risk_tolerance} risk tolerance ({risk_mode} assessme
             cached=cached,
             profile=profile
         )
+
+    def compute_metrics_only(self, user: AnalysisUser) -> dict:
+        holdings = list(self.holdings_repo.list_by_user(user.id))
+        if not holdings:
+            metrics = {
+                "sector_allocation": [],
+                "top_holdings": [],
+                "concentration_top3_pct": 0,
+                "diversification_score": 0
+            }
+            self.analysis.cache_metrics(user.id, MetricsPayload(**metrics))
+            return metrics
+
+        portfolio_summary: list[dict] = []
+        total_value = 0.0
+
+        for holding in holdings:
+            stock = self.stock_repo.get(holding.ticker)
+            if not stock or stock.current_price is None:
+                continue
+
+            current_value = holding.shares * stock.current_price
+            portfolio_summary.append({
+                "ticker": holding.ticker,
+                "current_value": current_value,
+                "sector": stock.sector or "Unknown"
+            })
+            total_value += current_value
+
+        sector_totals: dict[str, float] = {}
+        for holding in portfolio_summary:
+            sector = holding.get("sector") or "Unknown"
+            sector_totals[sector] = sector_totals.get(sector, 0) + holding["current_value"]
+        sector_allocation = [
+            {"sector": sector, "value": value, "pct": (value / total_value * 100) if total_value else 0}
+            for sector, value in sorted(sector_totals.items(), key=lambda item: item[1], reverse=True)
+        ]
+
+        sorted_holdings = sorted(portfolio_summary, key=lambda h: h["current_value"], reverse=True)
+        top_holdings = [
+            {
+                "ticker": h["ticker"],
+                "value": h["current_value"],
+                "pct": (h["current_value"] / total_value * 100) if total_value else 0
+            }
+            for h in sorted_holdings[:5]
+        ]
+        concentration_top3 = sum(h["current_value"] for h in sorted_holdings[:3]) / total_value * 100 if total_value else 0
+        diversification_score = max(0, min(100, 100 - concentration_top3))
+
+        metrics = {
+            "sector_allocation": sector_allocation,
+            "top_holdings": top_holdings,
+            "concentration_top3_pct": concentration_top3,
+            "diversification_score": diversification_score
+        }
+        self.analysis.cache_metrics(user.id, MetricsPayload(**metrics))
+        return metrics

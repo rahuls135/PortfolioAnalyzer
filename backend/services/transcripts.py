@@ -75,29 +75,55 @@ def _extract_key_points(text: str) -> list[str]:
         "quarter",
         "year",
     ]
+    boilerplate_markers = [
+        "welcome to",
+        "conference call",
+        "forward-looking",
+        "safe harbor",
+        "risks and uncertainties",
+        "sec",
+        "form 10-",
+        "earnings release",
+        "investor relations",
+        "reconciliation of these measures",
+        "prepared remarks",
+        "turn the call over",
+        "operator",
+    ]
     sentences = re.split(r"(?<=[.!?])\s+", text.strip())
-    points: list[str] = []
+    scored: list[tuple[int, str]] = []
     seen: set[str] = set()
     for sentence in sentences:
         clean = sentence.strip()
         if len(clean) < 20:
             continue
         lowered = clean.lower()
-        if not any(keyword in lowered for keyword in keywords):
+        if any(marker in lowered for marker in boilerplate_markers):
             continue
         normalized = re.sub(r"\s+", " ", lowered)
         if normalized in seen:
             continue
         seen.add(normalized)
-        points.append(clean)
-        if len(points) >= 6:
-            break
+        score = 0
+        score += sum(1 for keyword in keywords if keyword in lowered)
+        if re.search(r"\$\d", clean) or re.search(r"\b\d+(\.\d+)?%|\b\d+(\.\d+)?\b", clean):
+            score += 2
+        if re.search(r"\biphone|ipad|mac|services|wearables|vision pro|app store|icloud\b", lowered):
+            score += 2
+        if score > 0:
+            scored.append((score, clean))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    points = [sentence for _, sentence in scored[:6]]
     if len(points) < 3:
         for sentence in sentences:
             clean = sentence.strip()
             if len(clean) < 20:
                 continue
-            normalized = re.sub(r"\s+", " ", clean.lower())
+            lowered = clean.lower()
+            if any(marker in lowered for marker in boilerplate_markers):
+                continue
+            normalized = re.sub(r"\s+", " ", lowered)
             if normalized in seen:
                 continue
             seen.add(normalized)

@@ -27,6 +27,7 @@ export default function Portfolio() {
     last_analysis_at: string | null;
   } | null>(null);
   const [cachedMetrics, setCachedMetrics] = useState<PortfolioAnalysis['metrics'] | null>(null);
+  const [liveMetrics, setLiveMetrics] = useState<PortfolioAnalysis['metrics'] | null>(null);
   const [cachedTranscripts, setCachedTranscripts] = useState<Record<string, string>>({});
   const [cachedTranscriptsQuarter, setCachedTranscriptsQuarter] = useState<string | null>(null);
   const [transcriptSummaries, setTranscriptSummaries] = useState<Record<string, string>>({});
@@ -67,6 +68,15 @@ export default function Portfolio() {
     return () => clearInterval(timer);
   }, [nextAvailableAt]);
 
+  const loadMetrics = async () => {
+    try {
+      const response = await api.getPortfolioMetrics();
+      setLiveMetrics(response.data.metrics);
+    } catch (error) {
+      console.error('Error loading metrics:', error);
+    }
+  };
+
   const loadHoldings = async () => {
     try {
       const response = await api.getHoldings();
@@ -77,6 +87,7 @@ export default function Portfolio() {
       
       // Fetch prices for all holdings
       await loadPrices(baseHoldings);
+      await loadMetrics();
       setAnalysisError(null);
       return baseHoldings;
 
@@ -355,6 +366,8 @@ export default function Portfolio() {
     await loadAnalysis();
   };
 
+  const metricsToShow = liveMetrics || cachedMetrics || portfolioAnalysis?.metrics || null;
+
   const isNewHoldingRowValid = (row: { ticker: string; shares: string; avg_price: string }) => (
     row.ticker.trim() !== ''
     && isValidNumberInput(row.shares)
@@ -401,6 +414,10 @@ export default function Portfolio() {
             </div>
           </div>
         </div>
+      )}
+
+      {metricsToShow && (
+        <AnalysisMetrics metrics={metricsToShow} />
       )}
 
       <div className="card">
@@ -720,9 +737,8 @@ export default function Portfolio() {
 
       {portfolioAnalysis && (
         <>
-          <AnalysisMetrics metrics={portfolioAnalysis.metrics} />
           <Analysis portfolioAnalysis={portfolioAnalysis} />
-        <div className="card">
+          <div className="card">
             <h2>Earnings Call Key Points</h2>
             {transcriptsLoading && <span className="muted">Loading transcripts...</span>}
             {transcriptsError && <div className="error">{transcriptsError}</div>}
@@ -740,9 +756,6 @@ export default function Portfolio() {
       )}
       {!portfolioAnalysis && cachedAnalysisText && (
         <>
-          {cachedMetrics && (
-            <AnalysisMetrics metrics={cachedMetrics} />
-          )}
           <div className="card">
             <h2>AI Insights</h2>
             {cachedAnalysisMeta?.last_analysis_at && (

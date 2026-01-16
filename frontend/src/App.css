@@ -84,6 +84,21 @@
   margin-bottom: 1.5rem;
 }
 
+.card-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 1rem;
+}
+
 .form-group label {
   display: block;
   margin-bottom: 0.5rem;

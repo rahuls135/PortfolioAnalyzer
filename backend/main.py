@@ -123,6 +123,9 @@ class AnalysisTranscriptCache(BaseModel):
     quarter: str
     summaries: dict
 
+class PortfolioMetricsResponse(BaseModel):
+    metrics: dict
+
 @app.get("/")
 def read_root():
     return {"message": "Portfolio Analyzer API", "status": "running"}
@@ -501,6 +504,24 @@ def get_cached_analysis(
         "transcripts": profile.portfolio_transcripts,
         "transcripts_quarter": profile.portfolio_transcripts_quarter
     }
+
+@app.get("/api/metrics", response_model=PortfolioMetricsResponse)
+def get_portfolio_metrics(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    analysis_pipeline = get_portfolio_analysis_service(db, _av_throttle)
+    metrics = analysis_pipeline.compute_metrics_only(
+        AnalysisUser(
+            id=current_user.id,
+            age=current_user.age,
+            risk_tolerance=current_user.risk_tolerance,
+            risk_assessment_mode=current_user.risk_assessment_mode or "manual",
+            retirement_years=current_user.retirement_years,
+            obligations_amount=current_user.obligations_amount
+        )
+    )
+    return {"metrics": metrics}
 
 @app.post("/api/analysis/cached/transcripts")
 def cache_transcripts(

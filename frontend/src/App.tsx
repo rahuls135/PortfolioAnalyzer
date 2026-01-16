@@ -174,7 +174,7 @@ function App() {
     <div className="App">
       <header className="App-header">
         <div className="header-left">
-          <h1>📊 AI Portfolio Analyzer</h1>
+          <h1>AI Portfolio Analyzer</h1>
         </div>
         <div className="header-actions" ref={profileMenuRef}>
           <button
@@ -262,76 +262,82 @@ function App() {
                 />
               </div>
               {settingsError && <div className="error">{settingsError}</div>}
-              <div className="form-group">
-                <label>Risk Tolerance:</label>
-                <select
-                  value={settingsRiskTolerance}
-                  onChange={(e) => {
-                    setSettingsRiskTolerance(e.target.value);
-                    setSettingsRiskAssessmentMode('manual');
-                  }}
-                >
-                  <option value="conservative">Conservative</option>
-                  <option value="moderate">Moderate</option>
-                  <option value="aggressive">Aggressive</option>
-                </select>
-              </div>
-              <div className="risk-mode-bar">
-                <button
-                  type="button"
-                  className="btn-primary btn-with-icon"
-                  onClick={() => {
-                    const parsedAge = parseInt(settingsAge, 10);
-                    const parsedIncome = parseFloat(settingsIncome);
-                    const parsedRetirementYears = parseInt(settingsRetirementYears, 10);
-                    const parsedObligations = parseFloat(settingsObligationsAmount || '0');
+              <div className="card-section">
+                <div className="section-title">Risk Preference</div>
+                <div className="form-group">
+                  <label>Pick your risk level:</label>
+                  <select
+                    value={settingsRiskTolerance}
+                    onChange={(e) => {
+                      setSettingsRiskTolerance(e.target.value);
+                      setSettingsRiskAssessmentMode('manual');
+                    }}
+                  >
+                    <option value="conservative">Conservative</option>
+                    <option value="moderate">Moderate</option>
+                    <option value="aggressive">Aggressive</option>
+                  </select>
+                </div>
+                <div className="risk-mode-bar">
+                  <button
+                    type="button"
+                    className="btn-primary btn-with-icon"
+                    onClick={() => {
+                      const parsedAge = parseInt(settingsAge, 10);
+                      const parsedIncome = parseFloat(settingsIncome);
+                      const parsedRetirementYears = parseInt(settingsRetirementYears, 10);
+                      const parsedObligations = parseFloat(settingsObligationsAmount || '0');
 
-                    if (
-                      Number.isNaN(parsedAge)
-                      || Number.isNaN(parsedIncome)
-                      || Number.isNaN(parsedRetirementYears)
-                    ) {
-                      setSettingsError('Enter age, income, and retirement years to get an AI insight.');
-                      return;
-                    }
+                      if (
+                        Number.isNaN(parsedAge)
+                        || Number.isNaN(parsedIncome)
+                        || Number.isNaN(parsedRetirementYears)
+                      ) {
+                        setSettingsError('Enter age, income, and retirement years to get an AI insight.');
+                        return;
+                      }
 
-                    const recommendation = computeRiskRecommendation({
-                      age: parsedAge,
-                      income: parsedIncome,
-                      retirementYears: parsedRetirementYears,
-                      obligationsAmount: Number.isNaN(parsedObligations) ? 0 : parsedObligations
-                    });
-                    setSettingsRiskTolerance(recommendation);
-                    setSettingsRiskAssessmentMode('ai');
-                  }}
-                >
-                  <svg viewBox="0 0 20 20" aria-hidden="true">
-                    <path
-                      d="M4 16l7-7"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M11 9l2 2"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M14.5 3.5l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.2"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  Use AI Insights
-                </button>
+                      const recommendation = computeRiskRecommendation({
+                        age: parsedAge,
+                        income: parsedIncome,
+                        retirementYears: parsedRetirementYears,
+                        obligationsAmount: Number.isNaN(parsedObligations) ? 0 : parsedObligations
+                      });
+                      setSettingsRiskTolerance(recommendation);
+                      setSettingsRiskAssessmentMode('ai');
+                    }}
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path
+                        d="M4 16l7-7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M11 9l2 2"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                      <path
+                        d="M14.5 3.5l.6 1.7 1.7.6-1.7.6-.6 1.7-.6-1.7-1.7-.6 1.7-.6z"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.2"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    Get AI Suggestion
+                  </button>
+                  <span className="muted">
+                    Mode: {settingsRiskAssessmentMode === 'ai' ? 'AI insights' : 'Manual'}
+                  </span>
+                </div>
                 <span className="muted">
-                  Mode: {settingsRiskAssessmentMode === 'ai' ? 'AI insights' : 'Manual'}
+                  AI suggests a risk tolerance based on age, horizon, and obligations. You can always adjust it manually.
                 </span>
               </div>
 

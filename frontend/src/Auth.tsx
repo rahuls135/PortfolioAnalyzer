@@ -62,7 +62,7 @@ export default function Auth({ onAuthSuccess }: AuthProps) {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1>📊 AI Portfolio Analyzer</h1>
+        <h1>AI Portfolio Analyzer</h1>
         <p className="auth-subtitle">
           {isSignUp ? 'Create an account to get started' : 'Sign in to your account'}
         </p>
