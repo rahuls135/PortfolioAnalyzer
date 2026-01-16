@@ -637,36 +637,36 @@ table td:last-child {
   width: 180px;
 }
 
-.actions-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.btn-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--surface-alt);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-icon:hover {
-  background: #243044;
-}
-
 .action-btn svg,
-.btn-icon svg {
+.btn-add-row svg {
   width: 16px;
   height: 16px;
+}
+
+.add-row td {
+  border-bottom: none;
+  padding-top: 0.5rem;
+}
+
+.btn-add-row {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.btn-add-row:hover {
+  color: var(--text);
+  border-color: #3b4a69;
+  background: #1d2736;
 }
 
 .portfolio-summary {

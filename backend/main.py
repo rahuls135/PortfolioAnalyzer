@@ -126,6 +126,14 @@ class AnalysisTranscriptCache(BaseModel):
 class PortfolioMetricsResponse(BaseModel):
     metrics: dict
 
+class PortfolioSnapshotResponse(BaseModel):
+    generated_at: datetime
+    profile: dict
+    holdings: list[dict]
+    metrics: dict
+    transcripts: Optional[dict] = None
+    transcripts_quarter: Optional[str] = None
+
 @app.get("/")
 def read_root():
     return {"message": "Portfolio Analyzer API", "status": "running"}
@@ -523,6 +531,26 @@ def get_portfolio_metrics(
     )
     return {"metrics": metrics}
 
+@app.get("/api/portfolio/snapshot", response_model=PortfolioSnapshotResponse)
+def get_portfolio_snapshot(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    now_utc = datetime.now(timezone.utc)
+    analysis_pipeline = get_portfolio_analysis_service(db, _av_throttle)
+    snapshot = analysis_pipeline.build_snapshot(
+        AnalysisUser(
+            id=current_user.id,
+            age=current_user.age,
+            risk_tolerance=current_user.risk_tolerance,
+            risk_assessment_mode=current_user.risk_assessment_mode or "manual",
+            retirement_years=current_user.retirement_years,
+            obligations_amount=current_user.obligations_amount
+        ),
+        now_utc,
+    )
+    return snapshot
+
 @app.post("/api/analysis/cached/transcripts")
 def cache_transcripts(
     payload: AnalysisTranscriptCache,
@@ -597,7 +625,6 @@ def update_my_profile(
         retirement_years=retirement_years,
         obligations_amount=obligations_amount
     ))
-    profile_service.clear_analysis_cache(current_user.id)
     profile = get_profile_repository(db).get(current_user.id)
 
     return {

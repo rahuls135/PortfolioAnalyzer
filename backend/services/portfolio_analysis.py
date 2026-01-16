@@ -263,3 +263,40 @@ Risk Assessment: Your {user.risk_tolerance} risk tolerance ({risk_mode} assessme
         }
         self.analysis.cache_metrics(user.id, MetricsPayload(**metrics))
         return metrics
+
+    def build_snapshot(self, user: AnalysisUser, now_utc: datetime) -> dict:
+        holdings = list(self.holdings_repo.list_by_user(user.id))
+        holdings_snapshot = []
+        for holding in holdings:
+            stock = self.stock_repo.get(holding.ticker)
+            current_price = stock.current_price if stock else None
+            current_value = None
+            if current_price is not None:
+                current_value = holding.shares * current_price
+            holdings_snapshot.append({
+                "ticker": holding.ticker,
+                "shares": holding.shares,
+                "avg_price": holding.avg_price,
+                "current_price": current_price,
+                "current_value": current_value,
+                "sector": stock.sector if stock and stock.sector else "Unknown",
+                "asset_type": holding.asset_type,
+            })
+
+        metrics = self.compute_metrics_only(user)
+        profile = self.analysis.get_cached(user.id)
+
+        return {
+            "generated_at": now_utc,
+            "profile": {
+                "age": user.age,
+                "risk_tolerance": user.risk_tolerance,
+                "risk_assessment_mode": user.risk_assessment_mode or "manual",
+                "retirement_years": user.retirement_years,
+                "obligations_amount": user.obligations_amount,
+            },
+            "holdings": holdings_snapshot,
+            "metrics": metrics,
+            "transcripts": profile.portfolio_transcripts if profile else None,
+            "transcripts_quarter": profile.portfolio_transcripts_quarter if profile else None,
+        }

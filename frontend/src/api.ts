@@ -123,6 +123,29 @@ export interface PortfolioMetricsResponse {
   metrics: PortfolioAnalysis['metrics'];
 }
 
+export interface PortfolioSnapshot {
+  generated_at: string;
+  profile: {
+    age: number;
+    risk_tolerance: string;
+    risk_assessment_mode: string;
+    retirement_years: number;
+    obligations_amount?: number;
+  };
+  holdings: Array<{
+    ticker: string;
+    shares: number;
+    avg_price: number;
+    current_price: number | null;
+    current_value: number | null;
+    sector: string;
+    asset_type?: string | null;
+  }>;
+  metrics: PortfolioAnalysis['metrics'];
+  transcripts?: Record<string, string> | null;
+  transcripts_quarter?: string | null;
+}
+
 export interface CachedAnalysis {
   ai_analysis: string;
   analysis_meta: {
@@ -177,6 +200,9 @@ export const api = {
 
   getPortfolioMetrics: () =>
     apiClient.get<PortfolioMetricsResponse>(`/api/metrics`),
+
+  getPortfolioSnapshot: () =>
+    apiClient.get<PortfolioSnapshot>(`/api/portfolio/snapshot`),
 
   getCachedAnalysis: () =>
     apiClient.get<CachedAnalysis>(`/api/analysis/cached`),

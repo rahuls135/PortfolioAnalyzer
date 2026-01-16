@@ -78,6 +78,9 @@ class ProfileService:
             return
         profile.portfolio_analysis = None
         profile.portfolio_analysis_at = None
+        profile.portfolio_metrics = None
+        profile.portfolio_transcripts = None
+        profile.portfolio_transcripts_quarter = None
         self.profiles.save(profile)
 
 

@@ -444,28 +444,7 @@ export default function Portfolio() {
                 <th>Current Price</th>
                 <th>Current Value</th>
                 <th>Gain/Loss</th>
-                <th className="actions-header">
-                  <span>Actions</span>
-                  {showAddRowIcon && (
-                    <button
-                      type="button"
-                      className="btn-icon"
-                      onClick={handleAddHoldingRow}
-                      aria-label="Add row"
-                      title="Add row"
-                    >
-                      <svg viewBox="0 0 20 20" aria-hidden="true">
-                        <path
-                          d="M10 4v12M4 10h12"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </button>
-                  )}
-                </th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -672,6 +651,29 @@ export default function Portfolio() {
                   </td>
                 </tr>
               ))}
+              {showAddRowIcon && holdings.length > 0 && (
+                <tr className="add-row">
+                  <td>
+                    <button
+                      type="button"
+                      className="btn-add-row"
+                      onClick={handleAddHoldingRow}
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path
+                          d="M10 4v12M4 10h12"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <span>Add Holding</span>
+                    </button>
+                  </td>
+                  <td colSpan={6} />
+                </tr>
+              )}
             </tbody>
           </table>
         )}
