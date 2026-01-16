@@ -239,9 +239,7 @@ class SqlAlchemyProfileRepository(ProfileRepository):
             ai_analysis=profile.ai_analysis,
             portfolio_analysis=profile.portfolio_analysis,
             portfolio_analysis_at=profile.portfolio_analysis_at,
-            portfolio_metrics=profile.portfolio_metrics,
-            portfolio_transcripts=profile.portfolio_transcripts,
-            portfolio_transcripts_quarter=profile.portfolio_transcripts_quarter
+            portfolio_metrics=profile.portfolio_metrics
         )
 
     def save(self, record: ProfileRecord) -> ProfileRecord:
@@ -257,8 +255,6 @@ class SqlAlchemyProfileRepository(ProfileRepository):
         profile.portfolio_analysis = record.portfolio_analysis
         profile.portfolio_analysis_at = record.portfolio_analysis_at
         profile.portfolio_metrics = record.portfolio_metrics
-        profile.portfolio_transcripts = record.portfolio_transcripts
-        profile.portfolio_transcripts_quarter = record.portfolio_transcripts_quarter
         self.db.commit()
         self.db.refresh(profile)
         return ProfileRecord(
@@ -266,9 +262,7 @@ class SqlAlchemyProfileRepository(ProfileRepository):
             ai_analysis=profile.ai_analysis,
             portfolio_analysis=profile.portfolio_analysis,
             portfolio_analysis_at=profile.portfolio_analysis_at,
-            portfolio_metrics=profile.portfolio_metrics,
-            portfolio_transcripts=profile.portfolio_transcripts,
-            portfolio_transcripts_quarter=profile.portfolio_transcripts_quarter
+            portfolio_metrics=profile.portfolio_metrics
         )
 
 

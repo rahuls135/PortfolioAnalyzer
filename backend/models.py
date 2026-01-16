@@ -31,8 +31,6 @@ class UserProfile(Base):
     portfolio_analysis = Column(String)
     portfolio_analysis_at = Column(DateTime)
     portfolio_metrics = Column(JSON)
-    portfolio_transcripts = Column(JSON)
-    portfolio_transcripts_quarter = Column(String)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     user = relationship("User", back_populates="profile")

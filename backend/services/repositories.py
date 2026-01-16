@@ -72,8 +72,6 @@ class ProfileRecord:
     portfolio_analysis: Optional[str] = None
     portfolio_analysis_at: Optional[object] = None
     portfolio_metrics: Optional[dict] = None
-    portfolio_transcripts: Optional[dict] = None
-    portfolio_transcripts_quarter: Optional[str] = None
 
 
 class ProfileRepository(Protocol):
