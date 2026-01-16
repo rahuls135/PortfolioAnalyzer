@@ -142,8 +142,6 @@ export interface PortfolioSnapshot {
     asset_type?: string | null;
   }>;
   metrics: PortfolioAnalysis['metrics'];
-  transcripts?: Record<string, string> | null;
-  transcripts_quarter?: string | null;
 }
 
 export interface CachedAnalysis {
@@ -155,8 +153,6 @@ export interface CachedAnalysis {
     cooldown_remaining_seconds: number;
   };
   metrics?: PortfolioAnalysis['metrics'];
-  transcripts?: Record<string, string>;
-  transcripts_quarter?: string | null;
 }
 
 export const api = {
@@ -207,9 +203,6 @@ export const api = {
   getCachedAnalysis: () =>
     apiClient.get<CachedAnalysis>(`/api/analysis/cached`),
 
-  cacheTranscriptSummaries: (quarter: string, summaries: Record<string, string>) =>
-    apiClient.post(`/api/analysis/cached/transcripts`, { quarter, summaries }),
-  
   getStockPrice: (ticker: string) => 
     apiClient.get(`/api/stocks/${ticker}`)
 };

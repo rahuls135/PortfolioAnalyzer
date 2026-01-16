@@ -297,6 +297,4 @@ Risk Assessment: Your {user.risk_tolerance} risk tolerance ({risk_mode} assessme
             },
             "holdings": holdings_snapshot,
             "metrics": metrics,
-            "transcripts": profile.portfolio_transcripts if profile else None,
-            "transcripts_quarter": profile.portfolio_transcripts_quarter if profile else None,
         }

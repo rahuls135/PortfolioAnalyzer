@@ -28,9 +28,8 @@ export default function Portfolio() {
   } | null>(null);
   const [cachedMetrics, setCachedMetrics] = useState<PortfolioAnalysis['metrics'] | null>(null);
   const [liveMetrics, setLiveMetrics] = useState<PortfolioAnalysis['metrics'] | null>(null);
-  const [cachedTranscripts, setCachedTranscripts] = useState<Record<string, string>>({});
-  const [cachedTranscriptsQuarter, setCachedTranscriptsQuarter] = useState<string | null>(null);
   const [transcriptSummaries, setTranscriptSummaries] = useState<Record<string, string>>({});
+  const [transcriptsQuarter, setTranscriptsQuarter] = useState<string | null>(null);
   const [transcriptsLoading, setTranscriptsLoading] = useState(false);
   const [transcriptsError, setTranscriptsError] = useState<string | null>(null);
   const [cooldownRemainingSeconds, setCooldownRemainingSeconds] = useState(0);
@@ -51,6 +50,12 @@ export default function Portfolio() {
     };
     init();
   }, []);
+
+  useEffect(() => {
+    if (!portfolioAnalysis && cachedAnalysisText) {
+      void loadTranscriptsForHoldings();
+    }
+  }, [portfolioAnalysis, cachedAnalysisText, holdings.length]);
 
   useEffect(() => {
     if (!nextAvailableAt) {
@@ -179,8 +184,6 @@ export default function Portfolio() {
       setNextAvailableAt(response.data.analysis_meta.next_available_at);
       setLastAnalysisAt(response.data.analysis_meta.last_analysis_at);
       setCachedMetrics(response.data.metrics ?? null);
-      setCachedTranscripts(response.data.transcripts ?? {});
-      setCachedTranscriptsQuarter(response.data.transcripts_quarter ?? null);
     } catch (error) {
       setCachedAnalysisText(null);
       setCachedAnalysisMeta(null);
@@ -188,8 +191,6 @@ export default function Portfolio() {
       setNextAvailableAt(null);
       setLastAnalysisAt(null);
       setCachedMetrics(null);
-      setCachedTranscripts({});
-      setCachedTranscriptsQuarter(null);
     }
   };
 
@@ -209,54 +210,76 @@ export default function Portfolio() {
       setNextAvailableAt(response.data.analysis_meta.next_available_at);
       setLastAnalysisAt(response.data.analysis_meta.last_analysis_at);
 
-      if (response.data.holdings.length > 0) {
-        const now = new Date();
-        const quarter = `${now.getFullYear()}Q${Math.floor(now.getMonth() / 3) + 1}`;
-        setTranscriptsLoading(true);
-        const excludedAssetTypes = new Set(['ETF', 'MUTUAL FUND', 'FUND']);
-        const filteredHoldings = response.data.holdings.filter((holding) => {
-          const assetType = holding.asset_type?.toUpperCase();
-          return !assetType || !excludedAssetTypes.has(assetType);
-        });
-        const sortedHoldings = [...filteredHoldings].sort((a, b) => b.current_value - a.current_value);
-        const totalValue = sortedHoldings.reduce((sum, holding) => sum + holding.current_value, 0);
-        let running = 0;
-        const topHoldings = sortedHoldings.filter((holding) => {
-          if (totalValue <= 0) {
-            return false;
-          }
-          if (running / totalValue >= 0.7) {
-            return false;
-          }
-          running += holding.current_value;
-          return true;
-        });
-        const results = await Promise.allSettled(
-          topHoldings.map((holding) =>
-            api.getEarningsTranscript(holding.ticker, quarter, 2)
-          )
-        );
-        const summaries: Record<string, string> = {};
-        results.forEach((result) => {
-          if (result.status === 'fulfilled') {
-            summaries[result.value.data.ticker] = result.value.data.summary;
-          }
-        });
-        setTranscriptSummaries(summaries);
-        setCachedTranscripts(summaries);
-        setCachedTranscriptsQuarter(quarter);
-        if (Object.keys(summaries).length > 0) {
-          api.cacheTranscriptSummaries(quarter, summaries).catch(() => null);
-        }
-        if (results.some((result) => result.status === 'rejected')) {
-          setTranscriptsError('Some transcripts could not be loaded.');
-        }
-        setTranscriptsLoading(false);
-      }
+      await loadTranscriptsForHoldings();
     } catch (error) {
       setAnalysisError((error as Error).message || 'Failed to analyze portfolio.');
     } finally {
       setAnalysisLoading(false);
+    }
+  };
+
+  const loadTranscriptsForHoldings = async () => {
+    if (holdings.length === 0) {
+      setTranscriptSummaries({});
+      setTranscriptsQuarter(null);
+      return;
+    }
+    const now = new Date();
+    const quarter = `${now.getFullYear()}Q${Math.floor(now.getMonth() / 3) + 1}`;
+    if (transcriptsQuarter === quarter && Object.keys(transcriptSummaries).length > 0) {
+      return;
+    }
+    setTranscriptsLoading(true);
+    setTranscriptsError(null);
+    try {
+      const excludedAssetTypes = new Set(['ETF', 'MUTUAL FUND', 'FUND']);
+      const filteredHoldings = holdings.filter((holding) => {
+        const assetType = holding.asset_type?.toUpperCase();
+        return !assetType || !excludedAssetTypes.has(assetType);
+      });
+      const enrichedHoldings = filteredHoldings.map((holding) => {
+        const currentValue = holding.current_value
+          ?? (holding.current_price ? holding.shares * holding.current_price : 0);
+        return { ...holding, current_value: currentValue };
+      });
+      const sortedHoldings = [...enrichedHoldings].sort((a, b) => (b.current_value || 0) - (a.current_value || 0));
+      const totalValue = sortedHoldings.reduce((sum, holding) => sum + (holding.current_value || 0), 0);
+      let running = 0;
+      const topHoldings = sortedHoldings.filter((holding) => {
+        if (totalValue <= 0) {
+          return false;
+        }
+        if (running / totalValue >= 0.7) {
+          return false;
+        }
+        running += holding.current_value || 0;
+        return true;
+      });
+      if (topHoldings.length === 0) {
+        setTranscriptSummaries({});
+        setTranscriptsQuarter(quarter);
+        return;
+      }
+      const results = await Promise.allSettled(
+        topHoldings.map((holding) =>
+          api.getEarningsTranscript(holding.ticker, quarter, 2)
+        )
+      );
+      const summaries: Record<string, string> = {};
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          summaries[result.value.data.ticker] = result.value.data.summary;
+        }
+      });
+      setTranscriptSummaries(summaries);
+      setTranscriptsQuarter(quarter);
+      if (results.some((result) => result.status === 'rejected')) {
+        setTranscriptsError('Some transcripts could not be loaded.');
+      }
+    } catch (error) {
+      setTranscriptsError('Some transcripts could not be loaded.');
+    } finally {
+      setTranscriptsLoading(false);
     }
   };
 
@@ -771,13 +794,13 @@ export default function Portfolio() {
           </div>
           <div className="card">
             <h2>Earnings Call Key Points</h2>
-            {cachedTranscriptsQuarter && (
-              <span className="muted">Quarter: {cachedTranscriptsQuarter}</span>
+            {transcriptsQuarter && (
+              <span className="muted">Quarter: {transcriptsQuarter}</span>
             )}
-            {Object.keys(cachedTranscripts).length === 0 && (
+            {Object.keys(transcriptSummaries).length === 0 && (
               <span className="muted">No transcript summaries available yet.</span>
             )}
-            {Object.entries(cachedTranscripts).map(([ticker, summary]) => (
+            {Object.entries(transcriptSummaries).map(([ticker, summary]) => (
               <div key={ticker} className="transcript-summary">
                 <strong>{ticker}</strong>
                 <p>{summary}</p>

@@ -38,12 +38,6 @@ class AnalysisService:
     def get_cached(self, user_id: int) -> ProfileRecord | None:
         return self.profile_repo.get(user_id)
 
-    def cache_transcripts(self, user_id: int, quarter: str, summaries: dict) -> None:
-        profile = self.profile_repo.get(user_id) or ProfileRecord(user_id=user_id)
-        profile.portfolio_transcripts = summaries
-        profile.portfolio_transcripts_quarter = quarter
-        self.profile_repo.save(profile)
-
     def build_meta(
         self,
         profile: ProfileRecord | None,

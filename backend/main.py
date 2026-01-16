@@ -116,12 +116,6 @@ class AnalysisCacheResponse(BaseModel):
     ai_analysis: str
     analysis_meta: dict
     metrics: Optional[dict] = None
-    transcripts: Optional[dict] = None
-    transcripts_quarter: Optional[str] = None
-
-class AnalysisTranscriptCache(BaseModel):
-    quarter: str
-    summaries: dict
 
 class PortfolioMetricsResponse(BaseModel):
     metrics: dict
@@ -131,8 +125,6 @@ class PortfolioSnapshotResponse(BaseModel):
     profile: dict
     holdings: list[dict]
     metrics: dict
-    transcripts: Optional[dict] = None
-    transcripts_quarter: Optional[str] = None
 
 @app.get("/")
 def read_root():
@@ -508,9 +500,7 @@ def get_cached_analysis(
             ANALYSIS_COOLDOWN_SECONDS,
             cached=True
         ),
-        "metrics": profile.portfolio_metrics,
-        "transcripts": profile.portfolio_transcripts,
-        "transcripts_quarter": profile.portfolio_transcripts_quarter
+        "metrics": profile.portfolio_metrics
     }
 
 @app.get("/api/metrics", response_model=PortfolioMetricsResponse)
@@ -551,15 +541,6 @@ def get_portfolio_snapshot(
     )
     return snapshot
 
-@app.post("/api/analysis/cached/transcripts")
-def cache_transcripts(
-    payload: AnalysisTranscriptCache,
-    current_user: models.User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    analysis_service = get_analysis_service(db)
-    analysis_service.cache_transcripts(current_user.id, payload.quarter, payload.summaries)
-    return {"status": "ok"}
 
 @app.get("/api/users/me", response_model=UserResponse)
 def get_my_profile(
