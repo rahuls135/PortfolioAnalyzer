@@ -190,6 +190,11 @@ export const api = {
     apiClient.get<EarningsTranscriptSummary>(`/api/earnings/transcripts/${ticker}`, {
       params: { quarter, fallback }
     }),
+
+  getCachedEarningsTranscripts: (tickers: string[], quarter: string, fallback: number = 0) =>
+    apiClient.get<EarningsTranscriptSummary[]>(`/api/earnings/transcripts/cached`, {
+      params: { tickers, quarter, fallback }
+    }),
   
   analyzePortfolio: () => 
     apiClient.get<PortfolioAnalysis>(`/api/analysis`),

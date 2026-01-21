@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
@@ -28,6 +28,7 @@ from services import (
     get_portfolio_analysis_service,
     AnalysisUser,
 )
+from services.sqlalchemy_repositories import SqlAlchemyTranscriptRepository
 
 app = FastAPI()
 
@@ -667,3 +668,61 @@ def get_earnings_transcript(
         "transcript": record.transcript or "",
         "fetched_at": record.fetched_at
     }
+
+
+@app.get("/api/earnings/transcripts/cached", response_model=List[EarningsTranscriptResponse])
+def get_cached_earnings_transcripts(
+    tickers: List[str] = Query(default=[]),
+    quarter: str = "",
+    fallback: Optional[int] = 0,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not quarter or not re.match(r"^\d{4}Q[1-4]$", quarter):
+        raise HTTPException(status_code=400, detail="Quarter must be like 2024Q1")
+    if not tickers:
+        return []
+
+    cleaned_tickers: list[str] = []
+    for ticker_entry in tickers:
+        for ticker in ticker_entry.split(","):
+            cleaned = ticker.strip().upper()
+            if not cleaned:
+                continue
+            if not cleaned.isalnum() or len(cleaned) > 10:
+                raise HTTPException(status_code=400, detail=f"Invalid ticker format: {ticker}")
+            cleaned_tickers.append(cleaned)
+    if not cleaned_tickers:
+        return []
+
+    deduped = list(dict.fromkeys(cleaned_tickers))
+    remaining = max(0, min(fallback or 0, 4))
+
+    def previous_quarter(q: str) -> str:
+        year = int(q[:4])
+        quarter_num = int(q[-1])
+        if quarter_num == 1:
+            return f"{year - 1}Q4"
+        return f"{year}Q{quarter_num - 1}"
+
+    repo = SqlAlchemyTranscriptRepository(db)
+    results: list[dict] = []
+    for ticker in deduped:
+        current_quarter = quarter
+        record = None
+        for _ in range(remaining + 1):
+            record = repo.get(ticker, current_quarter)
+            if record and (record.summary or record.transcript):
+                break
+            record = None
+            current_quarter = previous_quarter(current_quarter)
+        if record:
+            results.append({
+                "ticker": record.ticker,
+                "quarter": record.quarter,
+                "summary": record.summary or "",
+                "transcript": record.transcript or "",
+                "fetched_at": record.fetched_at
+            })
+
+    return results

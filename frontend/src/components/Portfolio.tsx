@@ -255,27 +255,47 @@ export default function Portfolio() {
         running += holding.current_value || 0;
         return true;
       });
-      if (topHoldings.length === 0) {
+      const topTickers = new Set(topHoldings.map((holding) => holding.ticker));
+      const remainingTickers = filteredHoldings
+        .map((holding) => holding.ticker)
+        .filter((ticker) => !topTickers.has(ticker));
+
+      const summaries: Record<string, string> = {};
+
+      if (remainingTickers.length > 0) {
+        try {
+          const cachedResponse = await api.getCachedEarningsTranscripts(remainingTickers, quarter, 2);
+          cachedResponse.data.forEach((record) => {
+            summaries[record.ticker] = record.summary;
+          });
+        } catch (error) {
+          setTranscriptsError('Some transcripts could not be loaded.');
+        }
+      }
+
+      if (topHoldings.length > 0) {
+        const results = await Promise.allSettled(
+          topHoldings.map((holding) =>
+            api.getEarningsTranscript(holding.ticker, quarter, 2)
+          )
+        );
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            summaries[result.value.data.ticker] = result.value.data.summary;
+          }
+        });
+        if (results.some((result) => result.status === 'rejected')) {
+          setTranscriptsError('Some transcripts could not be loaded.');
+        }
+      }
+
+      if (Object.keys(summaries).length === 0) {
         setTranscriptSummaries({});
         setTranscriptsQuarter(quarter);
         return;
       }
-      const results = await Promise.allSettled(
-        topHoldings.map((holding) =>
-          api.getEarningsTranscript(holding.ticker, quarter, 2)
-        )
-      );
-      const summaries: Record<string, string> = {};
-      results.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          summaries[result.value.data.ticker] = result.value.data.summary;
-        }
-      });
       setTranscriptSummaries(summaries);
       setTranscriptsQuarter(quarter);
-      if (results.some((result) => result.status === 'rejected')) {
-        setTranscriptsError('Some transcripts could not be loaded.');
-      }
     } catch (error) {
       setTranscriptsError('Some transcripts could not be loaded.');
     } finally {
