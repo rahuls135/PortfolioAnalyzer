@@ -5,9 +5,12 @@ from datetime import datetime, timezone
 import json
 import re
 from typing import Optional
+import logging
 
 from .providers import TranscriptProvider
 from .repositories import TranscriptRepository, TranscriptRecord
+
+logger = logging.getLogger(__name__)
 
 
 def _previous_quarter(q: str) -> str:
@@ -162,9 +165,21 @@ class TranscriptService:
 
         for candidate in attempts:
             existing = self.repo.get(ticker, candidate)
-            if existing and existing.summary:
+            if existing and existing.transcript:
+                logger.info(
+                    "Transcript cache hit for %s %s (summary=%s)",
+                    ticker,
+                    candidate,
+                    "yes" if existing.summary else "no",
+                )
+                if not existing.summary:
+                    existing.summary = _summarize_transcript(existing.transcript)
+                    self.repo.save(existing)
                 return existing
+            if existing and not existing.transcript:
+                logger.info("Transcript cache miss (empty transcript) for %s %s", ticker, candidate)
 
+            logger.info("Transcript cache miss; fetching provider for %s %s", ticker, candidate)
             transcript = self.provider.get_transcript(ticker, candidate)
             transcript_text = _normalize_transcript_text(transcript.transcript)
             if not transcript_text:
